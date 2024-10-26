@@ -2,16 +2,27 @@ import socket
 from threading import Thread
 
 def new_connection(addr, conn):
-    print(f"Connection from {addr} established.")
-    
-    # Handshake: Expecting a "HELLO" message from the client
-    handshake_msg = conn.recv(1024).decode()  # Receive handshake message
-    if handshake_msg == "HELLO":
-        print(f"Handshake successful with {addr}.")
-        conn.send(b"ACK")  # Acknowledge handshake
+    print(f"Receiving connection request from {addr}.")
+
+    # Receive SYN message from client
+    syn = conn.recv(1024).decode()
+    if syn == "SYN":
+        print(f"SYN received from {addr}.")
+
+        conn.send(b"SYN-ACK")
+        print(f"SYN-ACK sent to {addr}.")
+
+        ack = conn.recv(1024).decode()
+        if ack == "ACK":
+            print(f"ACK received from {addr}.")
+        else:
+            print(f"ACK not received from {addr}.")
+            conn.close()
     else:
-        print(f"Handshake failed with {addr}.")
-    
+        print(f"SYN not received from {addr}.")
+        conn.close()
+
+    print(f"Connection from {addr} established.")
     conn.close()  # Close connection
 
 def get_host_default_interface_ip():

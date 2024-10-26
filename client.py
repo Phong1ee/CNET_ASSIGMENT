@@ -9,16 +9,22 @@ def new_connection(tid, host, port):
     client_socket = socket.socket()
     client_socket.connect((host, port))
 
-    # Handshake: Send "HELLO" message
-    client_socket.send(b"HELLO")
+    # Send SYN message to server
+    client_socket.send(b"SYN")
     
-    # Wait for server acknowledgment
-    ack_msg = client_socket.recv(1024).decode()  # Receive acknowledgment
-    if ack_msg == "ACK":
-        print(f'Thread ID {tid} received ACK from server.')
+    # Wait for server SYN_ACK message 
+    syn_ack = client_socket.recv(1024).decode()  # Receive acknowledgment
+    if syn_ack == "SYN-ACK":
+        print(f'Thread ID {tid} received SYN_ACK from server.')
     else:
-        print(f'Thread ID {tid} did not receive ACK from server.')
+        print(f'Thread ID {tid} did not receive SYN_ACK from server.')
+        # TODO: ADD TIMEOUT OR SOMETHING HERE
+        client_socket.close()
     
+    # Send ACK message to server
+    client_socket.send(b"ACK")
+    print(f'Thread ID {tid} sent ACK to server.')
+
     # Demo sleep time for fun (dummy command)
     for i in range(0, 3):
         print('Let me, ID={}: sleep in {}s'.format(tid, 3 - i))
