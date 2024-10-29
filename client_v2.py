@@ -7,8 +7,20 @@ import aiohttp
 import asyncio
 import struct
 import socket
+import os 
 
 client_prefix = "-ST0001-"
+
+def get_host_default_interface_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 1))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = '127.0.0.1'
+    finally:
+        s.close()
+    return ip
 
 class Peer:
     def __init__(self, host, port, file_queue):
@@ -21,6 +33,8 @@ class Peer:
         unique_component = os.urandom(12).hex()
         self.peer_id = f"{client_prefix}{unique_component}"
 
+        self.params = None
+
     def _prepare_params(self, torrent_file):
         """Prepare the parameters for the tracker request.
 
@@ -28,12 +42,12 @@ class Peer:
             torrent_file (string): .torrent file path 
 
         Returns:
-            dict: dictionary containing the parameters for the tracker request 
+            None
         """
         with open(torrent_file, 'rb') as f:
             torrent = Torrent.read(f)
             info_hash = hashlib.sha1(bencodepy.encode(torrent.info)).digest()    
-            params = {
+            self.params = {
                 'info_hash': info_hash,
                 'peer_id': self.peer_id,
                 'port': self.port,
@@ -44,7 +58,6 @@ class Peer:
                 'event': 'started',
                 'numwant': 50,
             }
-        return params
 
     async def request_peers(self, tracker_url, params):
         """Request peers from the tracker.
@@ -63,7 +76,7 @@ class Peer:
             peers = bencodepy.decode(resp_data)['peers']
             return peers
 
-    def validate_handshake(peer_handshake, expected_info_hash):
+    def _validate_handshake(peer_handshake, expected_info_hash):
         """Validate the handshake received from a peer.
 
         Args:
@@ -125,27 +138,26 @@ class Peer:
             print(f"Failed to connect to {peer['ip']}:{peer['port']}")
             print(e)
 
-    async def request_piece(self, piece_index):
+    async def _request_piece(self, piece_index):
         # TODO
         pass
 
     async def download_torrent(self, torrent_file, tracker_url): 
         self._read_torrent_file(torrent_file)
-        peers = await self.request_peers(tracker_url, params)
+        peers = await self.request_peers(tracker_url, self.params)
         await self.connect_to_peers(peers)   
 
-    def get_host_default_interface_ip():
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(('8.8.8.8', 1))
-            ip = s.getsockname()[0]
-        except Exception:
-            ip = '127.0.0.1'
-        finally:
-            s.close()
-        return ip
 
 if __name__ == "__main__":
-    host = Peer.get_host_default_interface_ip()
+    host = get_host_default_interface_ip()
     port = 8386 
     peer = Peer(host, port, None)
+
+    peer_list = peer.request_peers("http://localhost:8080/announce", peer._prepare_params("pic.torrent"))
+    for p in peer_list:
+        peer.connect_single_peer(p, peer.params['info_hash'])
+        # request piece from peer
+        # download
+        # upload 
+        # close connection
+    
