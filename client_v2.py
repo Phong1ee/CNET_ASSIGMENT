@@ -38,7 +38,7 @@ class Peer:
 
         self.params = None
 
-    def _prepare_params(self):
+    def _prepare_params(self, torrent_file):
         """Prepare the parameters for the tracker request.
 
         Args:
@@ -47,22 +47,22 @@ class Peer:
         Returns:
             None
         """
-        with open(self.torrent_file, 'rb') as f:
-            torrent = Torrent.read(f)
-            info_hash = hashlib.sha1(bencodepy.encode(torrent.info)).digest()    
-            self.params = {
-                'info_hash': info_hash,
-                'peer_id': self.peer_id,
-                'port': self.port,
-                'uploaded': 0,
-                'downloaded': 0,
-                'left': torrent.info['length'],
-                'compact': 0,
-                'event': 'started',
-                'numwant': 50,
-            }
+        torrent = Torrent.read(torrent_file)
+        info_hash = torrent.infohash 
+        self.params = {
+            'info_hash': info_hash,
+            'peer_id': self.peer_id,
+            'ip': self.host,
+            'port': self.port,
+            'uploaded': 0,
+            'downloaded': 0,
+            'left': torrent.size,
+            'compact': 0,
+            'event': 'started',
+            'numwant': 50,
+        }
 
-    async def _request_peers(self, tracker_url, params):
+    async def _request_peers(self, tracker_url, torrent_file):
         """Request peers from the tracker.
 
         Args:
@@ -74,14 +74,19 @@ class Peer:
         """
         # TODO: check for response status for error handling
         async with aiohttp.ClientSession() as session:
-            resp = await session.get(tracker_url, params=params)
-            resp_data = await resp.read()
+            self._prepare_params(torrent_file)
+            print('requesting to tracker')
+            resp = await session.get(tracker_url, params=self.params)
+            raw_resp_data = await resp.read()
 
-            if 'failure reason' in bencodepy.decode(resp_data):
-                print(bencodepy.decode(resp_data)['failure reason'])
+            resp_data = bencodepy.decode(raw_resp_data)
+            resp_data = {k.decode('utf-8'): v for k, v in resp_data.items()}
+
+            if 'failure reason' in resp_data:
+                print(resp_data['failure reason'])
                 return None
 
-            peers = bencodepy.decode(resp_data)['peers']
+            peers = resp_data['peers']
             return peers
 
     def _validate_handshake(peer_handshake, expected_info_hash):
@@ -150,14 +155,18 @@ class Peer:
         # TODO
         pass
 
-    async def download_torrent(self, torrent_file, tracker_url): 
-        self._read_torrent_file(torrent_file)
-        peers = await self.request_peers(tracker_url, self.params)
+    async def download_torrent(self, tracker_url, torrent_file): 
+        peers = await self._request_peers(tracker_url, torrent_file)
+        if peers:
+            print(f"Received {len(peers)} peers from the tracker.")
+        else:
+            print("Failed to receive peers from the tracker.")
+            return
         
 
-def client_thread(host, port):
-    peer = Peer(host, port)
-    asyncio.run(peer.download_torrent())
+def client_thread(host, port, torrent_file, tracker_url):
+    peer = Peer(host, port, torrent_file)
+    asyncio.run(peer.download_torrent(tracker_url, torrent_file))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -166,6 +175,9 @@ if __name__ == "__main__":
         epilog='!!!It requires the tracker is running and listening!!!'
     )
     parser.add_argument('--tracker-url', type=str, required=True)
+
+    args = parser.parse_args()
+    tracker_url = args.tracker_url
 
     host = get_host_default_interface_ip()
     port = 6881 
@@ -176,6 +188,6 @@ if __name__ == "__main__":
             print("Invalid file path. Please try again.")
             continue
         else:
-            thread = Thread(target=client_thread, args=(host, port, torrent_file))
+            thread = Thread(target=client_thread, args=(host, port, torrent_file, tracker_url))
             thread.start()
             port += 1
