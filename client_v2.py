@@ -1,6 +1,7 @@
 from torf import Torrent
+import threading
 from threading import Thread
-import urllib.parse
+import argparse
 import hashlib
 import bencodepy
 import aiohttp
@@ -23,19 +24,21 @@ def get_host_default_interface_ip():
     return ip
 
 class Peer:
-    def __init__(self, host, port, file_queue):
+    def __init__(self, host, port, torrent_file):
         self.host = host
         self.port = port
-        self.file_queue = file_queue
+        self.torrent_file = torrent_file
         self.peer_choking = True
         self.peer_interested = False
+        self.am_choking = True
+        self.am_interested = False
     
         unique_component = os.urandom(12).hex()
         self.peer_id = f"{client_prefix}{unique_component}"
 
         self.params = None
 
-    def _prepare_params(self, torrent_file):
+    def _prepare_params(self):
         """Prepare the parameters for the tracker request.
 
         Args:
@@ -44,7 +47,7 @@ class Peer:
         Returns:
             None
         """
-        with open(torrent_file, 'rb') as f:
+        with open(self.torrent_file, 'rb') as f:
             torrent = Torrent.read(f)
             info_hash = hashlib.sha1(bencodepy.encode(torrent.info)).digest()    
             self.params = {
@@ -59,7 +62,7 @@ class Peer:
                 'numwant': 50,
             }
 
-    async def request_peers(self, tracker_url, params):
+    async def _request_peers(self, tracker_url, params):
         """Request peers from the tracker.
 
         Args:
@@ -73,6 +76,11 @@ class Peer:
         async with aiohttp.ClientSession() as session:
             resp = await session.get(tracker_url, params=params)
             resp_data = await resp.read()
+
+            if 'failure reason' in bencodepy.decode(resp_data):
+                print(bencodepy.decode(resp_data)['failure reason'])
+                return None
+
             peers = bencodepy.decode(resp_data)['peers']
             return peers
 
@@ -110,7 +118,7 @@ class Peer:
 
         return True
 
-    async def connect_single_peer(self, peer, info_hash):
+    async def _connect_single_peer(self, peer, info_hash):
         """Connect to a single peer and perform handshake.
 
         Args:
@@ -145,19 +153,29 @@ class Peer:
     async def download_torrent(self, torrent_file, tracker_url): 
         self._read_torrent_file(torrent_file)
         peers = await self.request_peers(tracker_url, self.params)
-        await self.connect_to_peers(peers)   
+        
 
+def client_thread(host, port):
+    peer = Peer(host, port)
+    asyncio.run(peer.download_torrent())
 
 if __name__ == "__main__":
-    host = get_host_default_interface_ip()
-    port = 8386 
-    peer = Peer(host, port, None)
+    parser = argparse.ArgumentParser(
+        prog='Client',
+        description='Connect to tracker',
+        epilog='!!!It requires the tracker is running and listening!!!'
+    )
+    parser.add_argument('--tracker-url', type=str, required=True)
 
-    peer_list = peer.request_peers("http://localhost:8080/announce", peer._prepare_params("pic.torrent"))
-    for p in peer_list:
-        peer.connect_single_peer(p, peer.params['info_hash'])
-        # request piece from peer
-        # download
-        # upload 
-        # close connection
-    
+    host = get_host_default_interface_ip()
+    port = 6881 
+
+    while True:
+        torrent_file = input("Enter the path to the torrent file: ")
+        if not os.path.exists(torrent_file):
+            print("Invalid file path. Please try again.")
+            continue
+        else:
+            thread = Thread(target=client_thread, args=(host, port, torrent_file))
+            thread.start()
+            port += 1

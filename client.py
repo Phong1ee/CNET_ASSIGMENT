@@ -11,6 +11,7 @@ def new_connection(tid, host, port):
 
     # Send SYN message to server
     client_socket.send(b"SYN")
+    print(f'Thread ID {tid} sent SYN to server.')
     
     # Wait for server SYN_ACK message 
     syn_ack = client_socket.recv(1024).decode()  # Receive acknowledgment
@@ -40,6 +41,8 @@ def connect_server(threadnum, host, port):
 
     # Wait for all threads to finish
     [t.join() for t in threads]
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
