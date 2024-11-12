@@ -302,9 +302,26 @@ async def upload_thread(host, port, torrent_file):
             message_id = await reader.read(1)
             message_payload = await reader.read(message_length - 1)
 
-            # Process the message based on its ID
             if message_id == 6:  # Request message
-                pass
+                # Parse the request message
+                piece_index, offset, length = struct.unpack(">III", message_payload)
+                print(f"Received request for piece {piece_index}")
+
+                # Read the piece data from the file
+                piece_length = receiving_peer._read_torrent(torrent_file).piece_size
+                with open(torrent_file, "rb") as file:
+                    file.seek(piece_index * piece_length + offset)
+                    piece_data = file.read(length)
+
+                # Send the piece message
+                piece_message = (
+                    struct.pack(">I", 9 + length)
+                    + b"\x07"
+                    + struct.pack(">II", piece_index, offset)
+                    + piece_data
+                )
+                writer.write(piece_message)
+                await writer.drain()
             else:
                 # Handle other message types (optional)
                 print(f"Received message: {message_id}")
@@ -336,16 +353,13 @@ if __name__ == "__main__":
     port = 6881
     print(f"Client running on {host}:{port}")
 
-    download_thread = Thread(
-        target=download_thread, args=(host, port, tracker_url)
-    )
-    upload_thread = Thread(target=upload_thread, args=(host, port, "pic.torrent"))
+    async def main():
+        download_task = asyncio.create_task(
+            download_thread(host, port, tracker_url)
+        )
+        upload_task = asyncio.create_task(upload_thread(host, port, "pic.torrent"))
 
-    download_thread.start()
-    upload_thread.start()
+        await download_task
+        await upload_task
 
-    download_thread.join()
-    upload_thread.join()
-
-    print("Client exiting")
-
+    asyncio.run(main())

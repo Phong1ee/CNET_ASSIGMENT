@@ -51,7 +51,7 @@ class Tracker:
         """
 
         if error_flag:
-            print("checkpoint 1")
+            print("error_flag in _prepare_response_params")
             return bencodepy.encode({"failure reason": "Missing required parameters"})
 
         response = {"interval": 1800, "complete": 0, "incomplete": 0, "peers": []}
@@ -98,7 +98,7 @@ class Tracker:
             print(f"Missing required parameters from client {peer_id}")
             error_flag = 1
 
-        response = self._prepare_response_params(info_hash, error_flag, numwant)
+        response = self._prepare_response_params(info_hash, error_flag, numwant, peer_id)
 
         # Update the swarms
         if error_flag == 0:
