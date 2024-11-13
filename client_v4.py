@@ -118,17 +118,20 @@ class Peer:
         # Create a server socket
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind((host, port))
-        server_socket.listen(20)
+        server_socket.listen(6)
 
         # Listen for incoming connections
         upload_threads = []
         while True:
-            client_socket, address = server_socket.accept()
-            new_upload_thread = Thread(target=self._upload_piece, args=(client_socket, address))
-            new_upload_thread.start()
-            upload_threads.append(new_upload_thread)
-
-        [thread.join() for thread in upload_threads]
+            try:
+                client_socket, address = server_socket.accept()
+                new_upload_thread = Thread(target=self._upload_piece, args=(client_socket, address))
+                new_upload_thread.start()
+                upload_threads.append(new_upload_thread)
+            except KeyboardInterrupt:
+                server_socket.close()
+                [thread.join() for thread in upload_threads]
+                return 0
         
     def _request_peers(self, tracker_url, params):
         # Send GET request with params to tracker
