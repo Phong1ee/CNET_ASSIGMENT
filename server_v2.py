@@ -11,54 +11,55 @@ class Tracker:
         #     peers[]: {seeder, peer_id, ip, port}})
         self.swarms = []
 
-    def _update_swarms(self, info_hash, peer_id, ip, port):
-        """Update the swarm with the new peer information.
-
-        Args:
-            info_hash (str): Info hash of the torrent
-            peer_id (str): Peer ID
-            ip (str): IP address of the peer
-            port (int): Port number of the peer
-
-        Returns:
-            None
-        """
+    def _update_swarms(self, info_hash, peer_id, ip, port, is_seeder, event):
         for swarm in self.swarms:
             if swarm["info_hash"] == info_hash:
-                swarm["peers"].append(
-                    {"seeder": 0, "peer_id": peer_id, "ip": ip, "port": port}
-                )
+                for i, peer in enumerate(swarm["peers"]):
+                    if peer["peer_id"] == peer_id:
+                        if event == "stopped":
+                            swarm["peers"].pop(i)
+                            if not swarm["peers"]:
+                                self.swarms.remove(swarm)
+                            return
+                        elif event == "completed":
+                            peer["seeder"] = True
+                            return
+                        else:
+                            # Update peer information if needed
+                            peer["ip"] = ip
+                            peer["port"] = port
+                            peer["seeder"] = is_seeder
+                        return
+
+                # If the peer doesn't exist, add it to the swarm
+                swarm["peers"].append({
+                    "peer_id": peer_id,
+                    "ip": ip,
+                    "port": port,
+                    "seeder": is_seeder
+                })
                 return
 
-        self.swarms.append(
-            {
-                "info_hash": info_hash,
-                "peers": [{"seeder": 0, "peer_id": peer_id, "ip": ip, "port": port}],
-            }
-        )
+        # If the swarm doesn't exist, create a new one
+        self.swarms.append({
+            "info_hash": info_hash,
+            "peers": [{
+                "peer_id": peer_id,
+                "ip": ip,
+                "port": port,
+                "seeder": is_seeder
+            }]
+        })
 
     def _prepare_response_params(self, info_hash, error_flag, numwant, peer_id):
-        """Prepare the response parameters for the tracker.
-
-        Args:
-            info_hash (str): Info hash of the torrent
-            error_flag (int): Error flag
-            numwant (int): number of peer wanted by client in GET request
-            peer_id (int): peer id of the client
-
-        Returns:
-            dict: Response parameters
-        """
-
         if error_flag:
-            print("error_flag in _prepare_response_params")
             return bencodepy.encode({"failure reason": "Missing required parameters"})
 
         response = {"interval": 1800, "complete": 0, "incomplete": 0, "peers": []}
 
         for swarm in self.swarms:
             if swarm["info_hash"] == info_hash:
-                count = 0
+                found_numwant = False
                 for peer in swarm["peers"]:
                     if peer["peer_id"] == peer_id:
                         continue
@@ -67,47 +68,34 @@ class Tracker:
                         response["complete"] += 1
                     else:
                         response["incomplete"] += 1
-                    count += 1
-                    if count == numwant:
+                    if len(response["peers"]) == numwant:
+                        found_numwant = True
                         break
-        print(response)
+                if found_numwant:
+                    break
+
         return bencodepy.encode(response)
 
     async def announce(self, request):
-        """Handle the announce request from the client.
-
-        Args:
-            request: Request object
-
-        Returns:
-            web.Response: Response object
-        """
         error_flag = 0
-
-        # Extract necessary parameters from the query
         info_hash = request.query.get("info_hash")
         peer_id = request.query.get("peer_id")
         ip = request.query.get("ip")
         port = request.query.get("port")
-        numwant = request.query.get("numwant")
-        print(
-            f"Extracted keys from client {peer_id}: {info_hash}, {peer_id}, {ip}, {port}, {numwant}"
-        )
+        uploaded = request.query.get("uploaded")
+        downloaded = request.query.get("downloaded")
+        left = request.query.get("left")
+        event = request.query.get("event")  
+        numwant = int(request.query.get("numwant", 50))
 
         if not (info_hash and peer_id and port):
-            print(f"Missing required parameters from client {peer_id}")
             error_flag = 1
 
+        is_seeder = True if left == '0' else False
+        self._update_swarms(info_hash, peer_id, ip, port, is_seeder, event)
+
         response = self._prepare_response_params(info_hash, error_flag, numwant, peer_id)
-
-        # TODO: FIX THIS PART Update the swarms
-        if error_flag == 0:
-            print(f"Updating swarms for client {peer_id}")
-            self._update_swarms(info_hash, peer_id, ip, port)
-
-        print(f"Responding to client {peer_id}")
         return web.Response(body=response, content_type="text/plain")
-
 
 def get_host_default_interface_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

@@ -24,22 +24,76 @@ def get_host_default_interface_ip():
         s.close()
     return ip
 
+class UI:
+    def __init__(self, peer):
+        self.peer = peer
+
+    def run(self):
+        while True:
+            self.clear()
+            option = self.menu()
+
+            if option == '1':
+                self.download_torrent()
+            elif option == '2':
+                self.clear()
+                self.donwload_status()
+            elif option == '3':
+                return
+            else:
+                print('Invalid option')
+    
+    def menu(self):
+        print('--------------------------------')
+        print('Welcome to out Simple BitTorrent client! You are Online!, other peers may connect to you')
+        print('[1] Download')
+        print('[2] View downloading files')
+        print('[3] Exit')
+        print('--------------------------------')
+        option = input('Choose an option: ')
+
+        return option
+
+    def download_torrent(self):
+        # Input the .torrent file
+        while True:
+            torrent_file = input("Enter the path to the torrent file ('cancel' to return): ")
+            if torrent_file == "cancel":
+                break
+            if not os.path.exists(torrent_file):
+                print("File not found. Please try again.")
+            else:
+                break
+        if torrent_file == "cancel":
+            return
+        download_thread = Thread(target=peer.download_thread, args=(torrent_file, args.tracker_url))
+        download_thread.start()
+
+    def donwload_status(self):
+        downloading = self.peer.downloading
+
+        print('--------------------------------')
+        print('Currently downloading: ', downloading)
+        print('--------------------------------')
+        print('File name  |  Size  |  Status')
+        print('--------------------------------')
+        input('Enter to return...')
+
+    def clear(self):
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+
 class Peer:
     def __init__(self, host, port):
         self.host = host
         self.port = port
         unique_component = os.urandom(12).hex()
         self.id = f"{client_prefix}{unique_component}"
+        self.downloading = 0
+        self.downloaded_data = {}
+        self.download_lock = threading.Lock()
 
-    def download_thread(self, host, port, tracker_url):    
-        # Input the .torrent file
-        while True:
-            torrent_file = input("Enter the path to the torrent file: ")
-            if not os.path.exists(torrent_file):
-                print("File not found. Please try again.")
-            else:
-                break
-        
+    def download_thread(self, torrent_file, tracker_url):    
         # Read the torrent file
         torrent = Torrent.read(torrent_file)
 
@@ -58,7 +112,7 @@ class Peer:
         }
 
         # Get peer list from tracker
-        peers = self._request_peers(tracker_url, params)
+        peers = self._request_peers(tracker_url+'/announce', params)
         if peers == 1 or peers == 2:
             return 1
 
@@ -112,7 +166,6 @@ class Peer:
                     piece_idx += 1
                 if trailing_end:            
                     file.write(downloaded_data[piece_idx][:trailing_end])
-
         return 0
 
     def upload_thread(self, host, port):
@@ -137,42 +190,49 @@ class Peer:
     def _download_piece(self, peer, info_hash, piece_index, hashes, piece_length):
         print(f"Connecting to {peer['ip']}:{peer['port']}")
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((peer['ip'], int(peer['port'])))
+        sock.settimeout(10)
 
-        # Handshake
-        pstrlen = struct.pack("B", 19)
-        pstr = b"BitTorrent protocol"
-        reserved = b"\x00" * 8
-        handshake = pstrlen + pstr + reserved + info_hash.encode() + self.id.encode()
+        try:
+            sock.connect((peer['ip'], int(peer['port'])))
+            # Handshake
+            pstrlen = struct.pack("B", 19)
+            pstr = b"BitTorrent protocol"
+            reserved = b"\x00" * 8
+            handshake = pstrlen + pstr + reserved + info_hash.encode() + self.id.encode()
 
-        # Send handshake
-        sock.send(handshake)
+            # Send handshake
+            sock.send(handshake)
 
-        # Receive handshake
-        peer_handshake = sock.recv(68).decode()
+            # Receive handshake
+            peer_handshake = sock.recv(68).decode()
 
-        if self._validate_handshake(peer_handshake, info_hash, peer['peer_id']):
-            # Receive unchoke message
-            unchoke = sock.recv(5).decode()
-            if unchoke[-1] == 1:
-                # Send request message
-                offset = 0
-                request = struct.pack(">IBIII", 13, 6, piece_index, offset, piece_length)
-                sock.send(request)
+            if self._validate_handshake(peer_handshake, info_hash, peer['peer_id']):
+                # Receive unchoke message
+                unchoke = sock.recv(5).decode()
+                if unchoke[-1] == 1:
+                    # Send request message
+                    offset = 0
+                    request = struct.pack(">IBIII", 13, 6, piece_index, offset, piece_length)
+                    sock.send(request)
 
-                # Receive piece message
-                piece = sock.recv(piece_length + 9).decode()
+                    # Receive piece message
+                    piece = sock.recv(piece_length + 9).decode()
 
-                # Validate piece
-                piece_data = piece[9:]
-                piece_hash = hashlib.sha1(piece_data).digest() 
-                if piece_hash == hashes[piece_index]:
-                    return piece_index, piece_data
-                return 3
-            return 2
-        else:
-            print(f"[{self.id}] Handshake failed.")
-            return 1
+                    # Validate piece
+                    piece_data = piece[9:]
+                    piece_hash = hashlib.sha1(piece_data).digest() 
+                    if piece_hash == hashes[piece_index]:
+                        return piece_index, piece_data
+                    return 3
+                return 2
+            else:
+                print(f"[{self.id}] Handshake failed.")
+                return 1
+        except socket.timeout:
+            raise TimeoutError(f"Connection to {peer['ip']}:{peer['port']} timed out.")
+        finally:
+            sock.close()
+
 
     def _upload_piece(self, sock, address):
         print(f"{address} is requesting connection.")
@@ -307,20 +367,18 @@ if __name__ == "__main__":
         epilog="!!!It requires the tracker is running and listening!!!"
     )
     parser.add_argument("--tracker-url", type=str, required=True)
-    parser.add_argument("--port", type=int, required=True)
+    # parser.add_argument("--port", type=int, required=True)
     args = parser.parse_args()
     
     host = get_host_default_interface_ip()
-    port = args.port 
+    port = 6881
     print(f"Client running on {host}:{port}")
 
     peer = Peer(host, port)
-
-    download_thread = Thread(target=peer.download_thread, args=(host, port, args.tracker_url))
-    upload_thread = Thread(target=peer.upload_thread, args=(host, port))
-
-    download_thread.start()
+    
+    upload_thread = Thread(target=peer.upload_thread, args=(host, port), daemon=True)
     upload_thread.start()
+    download_threads = []
 
-    download_thread.join()
-    upload_thread.join()
+    ui = UI(peer)
+    ui.run()
