@@ -8,6 +8,7 @@ import struct
 import socket
 import os
 import requests
+import hashlib
 from math import ceil
 
 client_prefix = "-ST0001-"
@@ -84,7 +85,7 @@ class Peer:
         peer_idx = 0
         download_threads = []
         for piece_idx in range(torrent.pieces):
-            download_threads.append(Thread(target=self._download_piece, args=(peers[peer_idx], torrent.infohash, piece_idx, torrent.piece_size)))
+            download_threads.append(Thread(target=self._download_piece, args=(peers[peer_idx], torrent.infohash, piece_idx, torrent.hashes, torrent.piece_size)))
             peer_idx = (peer_idx + 1) % len(peers)
 
         [thread.start() for thread in download_threads]
@@ -132,33 +133,8 @@ class Peer:
                 server_socket.close()
                 [thread.join() for thread in upload_threads]
                 return 0
-        
-    def _request_peers(self, tracker_url, params):
-        # Send GET request with params to tracker
-        raw_response = requests.get(tracker_url, params=params)
-        response = bencodepy.decode(raw_response.content)
-        response = {k.decode('utf-8'): v for k, v in response.items()}
-        if "failure reason" in response:
-            print(f"[{self.id}] Error: {response['failure reason']}")
-            return 1  
-        
-        peers = response["peers"]
-        for peer in peers:
-            new_peer = {}
-            for key, value in peer.items():
-                new_key = key.decode('utf-8')
-                if isinstance(value, bytes):
-                    value = value.decode('utf-8')
-                new_peer[new_key] = value
-            peers[peers.index(peer)] = new_peer 
 
-        if peers:
-            return peers
-        else:
-            print(f"[{self.id}] No peers found.")
-            return 2
-
-    def _download_piece(self, peer, info_hash, piece_index, piece_length):
+    def _download_piece(self, peer, info_hash, piece_index, hashes, piece_length):
         print(f"Connecting to {peer['ip']}:{peer['port']}")
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((peer['ip'], int(peer['port'])))
@@ -188,39 +164,15 @@ class Peer:
                 piece = sock.recv(piece_length + 9).decode()
 
                 # Validate piece
-                received_piece_length = struct.unpack(">I", piece[0:4])[0]
-                received_piece_index = struct.unpack(">I", piece[4:8])[0]
                 piece_data = piece[9:]
-                if received_piece_length == piece_length + 1 and received_piece_index == piece_index:
+                piece_hash = hashlib.sha1(piece_data).digest() 
+                if piece_hash == hashes[piece_index]:
                     return piece_index, piece_data
                 return 3
             return 2
         else:
             print(f"[{self.id}] Handshake failed.")
             return 1
-
-    def _validate_handshake(peer_handshake, expected_info_hash, expected_peer_id):
-        if len(peer_handshake) != 68:
-            return False
-
-        pstrlen = struct.unpack("B", peer_handshake[0:1])[0]
-        pstr = peer_handshake[1:20].decode("utf-8", errors="ignore")
-
-        if pstrlen != 19 or pstr != "BitTorrent protocol":
-            print("Invalid protocol string.")
-            return False
-
-        info_hash = peer_handshake[28:48]
-        peer_id = peer_handshake[48:68]
-
-        if info_hash != expected_info_hash:
-            print("Info hash mismatch.")
-            return False
-        if peer_id == expected_peer_id:
-            print("Peer ID mismatch.")
-            return False
-
-        return True
 
     def _upload_piece(self, sock, address):
         print(f"{address} is requesting connection.")
@@ -259,7 +211,7 @@ class Peer:
             piece_length = struct.unpack(">I", request[13:17])[0]
 
             # Read piece data
-            piece_data = self._read_piece(piece_index, offset, piece_length)
+            piece_data = self._read_piece(torrent, piece_index)
 
             # Send piece message
             piece = struct.pack(">IBIII", piece_length + 9, 7, piece_index, offset, piece_data)
@@ -273,6 +225,54 @@ class Peer:
         sock.close()
         return
 
+    def _request_peers(self, tracker_url, params):
+        # Send GET request with params to tracker
+        raw_response = requests.get(tracker_url, params=params)
+        response = bencodepy.decode(raw_response.content)
+        response = {k.decode('utf-8'): v for k, v in response.items()}
+        if "failure reason" in response:
+            print(f"[{self.id}] Error: {response['failure reason']}")
+            return 1  
+        
+        peers = response["peers"]
+        for peer in peers:
+            new_peer = {}
+            for key, value in peer.items():
+                new_key = key.decode('utf-8')
+                if isinstance(value, bytes):
+                    value = value.decode('utf-8')
+                new_peer[new_key] = value
+            peers[peers.index(peer)] = new_peer 
+
+        if peers:
+            return peers
+        else:
+            print(f"[{self.id}] No peers found.")
+            return 2
+
+    def _validate_handshake(peer_handshake, expected_info_hash, expected_peer_id):
+        if len(peer_handshake) != 68:
+            return False
+
+        pstrlen = struct.unpack("B", peer_handshake[0:1])[0]
+        pstr = peer_handshake[1:20].decode("utf-8", errors="ignore")
+
+        if pstrlen != 19 or pstr != "BitTorrent protocol":
+            print("Invalid protocol string.")
+            return False
+
+        info_hash = peer_handshake[28:48]
+        peer_id = peer_handshake[48:68]
+
+        if info_hash != expected_info_hash:
+            print("Info hash mismatch.")
+            return False
+        if peer_id == expected_peer_id:
+            print("Peer ID mismatch.")
+            return False
+
+        return True
+
     def _check_local_repo(self, info_hash):
         torrent_files = [f for f in os.listdir() if f.endswith(".torrent")]
         for torrent_file in torrent_files:
@@ -280,6 +280,25 @@ class Peer:
             if torrent.infohash == info_hash:
                 return torrent_file
         return None
+
+    def _read_piece(torrent, piece_idx):
+        if torrent.mode == "singlefile":
+            offset = piece_idx * torrent.piece_size
+            try:
+                with open(torrent.name, "rb") as file:
+                    file.seek(offset)
+                    data = file.read(torrent.piece_size)
+                    if not data:
+                        return None
+                    return data
+            except FileNotFoundError as e:
+                print(f"File not found: {e}")
+                return None
+            except IOError as e:
+                print(f"Error reading file: {e}")
+                return None
+        else: # multifile
+            pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
