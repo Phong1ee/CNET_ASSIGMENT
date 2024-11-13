@@ -100,7 +100,7 @@ class Tracker:
 
         response = self._prepare_response_params(info_hash, error_flag, numwant, peer_id)
 
-        # Update the swarms
+        # TODO: FIX THIS PART Update the swarms
         if error_flag == 0:
             print(f"Updating swarms for client {peer_id}")
             self._update_swarms(info_hash, peer_id, ip, port)

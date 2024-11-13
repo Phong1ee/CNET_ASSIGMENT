@@ -1,5 +1,5 @@
 import socket
-jlimport time
+import time
 import argparse
 from threading import Thread
 
@@ -7,6 +7,7 @@ def new_connection(tid, host, port):
     print('Thread ID {} connecting to {}:{}'.format(tid, host, port))
 
     client_socket = socket.socket()
+    print((host,port))
     client_socket.connect((host, port))
 
     # Send SYN message to server
