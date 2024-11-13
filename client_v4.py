@@ -175,7 +175,7 @@ class Peer:
             unchoke = sock.recv(5)
             if unchoke[-1] == 1:
                 # Send request message
-                offset = piece_length * piece_index
+                offset = 0
                 request = struct.pack(">IBIII", 13, 6, piece_index, offset, piece_length)
                 sock.send(request)
 
