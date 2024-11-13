@@ -115,19 +115,21 @@ class Peer:
         return 0
 
     def upload_thread(self, host, port):
-        # Check existing .torrent file in local repository
-        torrent_files = [f for f in os.listdir() if f.endswith(".torrent")]
-
         # Create a server socket
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind((host, port))
         server_socket.listen(20)
 
+        # Listen for incoming connections
+        upload_threads = []
         while True:
             client_socket, address = server_socket.accept()
             new_upload_thread = Thread(target=self._upload_piece, args=(client_socket, address))
             new_upload_thread.start()
+            upload_threads.append(new_upload_thread)
 
+        [thread.join() for thread in upload_threads]
+        
     def _request_peers(self, tracker_url, params):
         # Send GET request with params to tracker
         raw_response = requests.get(tracker_url, params=params)
@@ -162,10 +164,10 @@ class Peer:
         pstrlen = struct.pack("B", 19)
         pstr = b"BitTorrent protocol"
         reserved = b"\x00" * 8
-        handshake = pstrlen + pstr + reserved + info_hash + self.id
+        handshake = pstrlen + pstr + reserved + info_hash.encode() + self.id.encode()
 
         # Send handshake
-        sock.send(handshake.encode())
+        sock.send(handshake)
 
         # Receive handshake
         peer_handshake = sock.recv(68).decode()
@@ -221,7 +223,7 @@ class Peer:
         print(f"{address} is requesting connection.")
 
         # Receive handshake
-        peer_handshake = sock.recv(68)
+        peer_handshake = sock.recv(68).decode()
 
         info_hash = peer_handshake[28:48]
         peer_id = peer_handshake[48:68]
@@ -238,10 +240,10 @@ class Peer:
             pstrlen = struct.pack("B", 19)
             pstr = b"BitTorrent protocol"
             reserved = b"\x00" * 8
-            handshake = pstrlen + pstr + reserved + torrent.infohash + self.id
+            handshake = pstrlen + pstr + reserved + torrent.infohash.encode() + self.id.encode()
 
             # Send handshake
-            sock.send(handshake.encode())
+            sock.send(handshake)
 
             # Send unchoke message
             unchoke = struct.pack(">IB", 1, 1)
@@ -265,8 +267,8 @@ class Peer:
             print("Torrent file not found.")
             sock.close()
             return
-
-
+        sock.close()
+        return
 
     def _check_local_repo(self, info_hash):
         torrent_files = [f for f in os.listdir() if f.endswith(".torrent")]
