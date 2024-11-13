@@ -3,13 +3,12 @@ import threading
 from threading import Thread
 import argparse
 import bencodepy
-import aiofiles
 import struct
 import socket
 import os
 import requests
 import hashlib
-from math import ceil
+import time
 
 client_prefix = "-ST0001-"
 
@@ -39,17 +38,21 @@ class UI:
                 self.clear()
                 self.donwload_status()
             elif option == '3':
+                self.clear()
+                self.upload_status()
+            elif option == '4':
                 return
             else:
                 print('Invalid option')
     
     def menu(self):
-        print('--------------------------------')
+        print('--------------------------------------------')
         print('Welcome to out Simple BitTorrent client! You are Online!, other peers may connect to you')
         print('[1] Download')
         print('[2] View downloading files')
-        print('[3] Exit')
-        print('--------------------------------')
+        print('[3] View uploading files')
+        print('[4] Exit')
+        print('--------------------------------------------')
         option = input('Choose an option: ')
 
         return option
@@ -72,11 +75,33 @@ class UI:
     def donwload_status(self):
         downloading = self.peer.downloading
 
-        print('--------------------------------')
+        print('--------------------------------------------')
         print('Currently downloading: ', downloading)
-        print('--------------------------------')
-        print('File name  |  Size  |  Status')
-        print('--------------------------------')
+        print('--------------------------------------------')
+        print('File name \t Speed \t Connected')
+        
+        for info_hash, info in peer.downloading_data.items():
+            print(f"{info['name']}",end='\t')
+            print(f"{info['download_speed']}",end='\t')
+            print(f"{info['connected_peers']} / {info['num_peers']}")
+
+        print('--------------------------------------------')
+        input('Enter to return...')
+
+    def upload_status(self):
+        uploading = self.peer.uploading
+
+        print('--------------------------------------------')
+        print('Currently uploading: ', uploading)
+        print('--------------------------------------------')
+        print('File name \t Peer ID \t Uploaded')
+        
+        for address, info in peer.client_being_uploaded.items():
+            print(f"{info['file']}",end='\t')
+            print(f"{info['peer_id']}",end='\t')
+            print(f"{info['uploaded']}")
+
+        print('--------------------------------------------')
         input('Enter to return...')
 
     def clear(self):
@@ -89,8 +114,11 @@ class Peer:
         self.port = port
         unique_component = os.urandom(12).hex()
         self.id = f"{client_prefix}{unique_component}"
+        self.uploading = 0
         self.downloading = 0
-        self.downloaded_data = {}
+        self.client_being_uploaded = {}
+        self.downloading_data = {}
+        self.upload_lock = threading.Lock()
         self.download_lock = threading.Lock()
 
     def download_thread(self, torrent_file, tracker_url):    
@@ -134,6 +162,18 @@ class Peer:
                 # print("trailing_end: ", trailing_end)
             pointer += size 
             files[name] = {"trail_start": trailing_start, "trail_end": trailing_end}
+        
+        self.download_lock.acquire()
+        self.downloading += 1
+        self.downloading_data[torrent.infohash] = {'name': torrent.name,
+                                                   'num_peers': len(peers),
+                                                   'connected_peers': 0,
+                                                   'total_downloaded': 0, 
+                                                   'downloaded': 0,
+                                                   'total': torrent.size,
+                                                   'download_speed': 0,
+                                                   'last_seen': time.time()}
+        self.download_lock.release()
 
         # Connect to peers
         peer_idx = 0
@@ -143,6 +183,9 @@ class Peer:
             peer_idx = (peer_idx + 1) % len(peers)
 
         [thread.start() for thread in download_threads]
+        timer = threading.Timer(1, self._update_download_speeds)
+        timer.start()
+
         for thread in download_threads:
             thread.join()
             piece_idx, piece_data = thread.result()
@@ -207,6 +250,10 @@ class Peer:
             peer_handshake = sock.recv(68).decode()
 
             if self._validate_handshake(peer_handshake, info_hash, peer['peer_id']):
+                self.download_lock.acquire()
+                self.downloading_data[info_hash]['connected_peers'] += 1
+                self.download_lock.release()
+
                 # Receive unchoke message
                 unchoke = sock.recv(5).decode()
                 if unchoke[-1] == 1:
@@ -222,6 +269,10 @@ class Peer:
                     piece_data = piece[9:]
                     piece_hash = hashlib.sha1(piece_data).digest() 
                     if piece_hash == hashes[piece_index]:
+                        self.download_lock.acquire()
+                        self.downloading_data[info_hash]['downloaded'] += len(piece_data)
+                        self.downloading_data[info_hash]['total_downloaded'] += len(piece_data)
+                        self.download_lock.release()
                         return piece_index, piece_data
                     return 3
                 return 2
@@ -229,10 +280,12 @@ class Peer:
                 print(f"[{self.id}] Handshake failed.")
                 return 1
         except socket.timeout:
-            raise TimeoutError(f"Connection to {peer['ip']}:{peer['port']} timed out.")
+            print(f"Connection to {peer['ip']}:{peer['port']} timed out.")
         finally:
             sock.close()
-
+            self.download_lock.acquire()
+            self.downloading_data[info_hash]['connected_peers'] -= 1
+            self.download_lock.release()
 
     def _upload_piece(self, sock, address):
         print(f"{address} is requesting connection.")
@@ -264,6 +317,14 @@ class Peer:
             unchoke = struct.pack(">IB", 1, 1)
             sock.send(unchoke)
 
+            self.upload_lock.acquire()
+            self.uploading += 1
+            self.client_being_uploaded[address] = {'connection_time': time.time(),
+                                                   'file': torrent.name,
+                                                   'peer_id': peer_id,
+                                                   'uploaded': 0,}
+            self.upload_lock.release()
+
             # Receive request message
             request = sock.recv(17).decode()
             piece_index = struct.unpack(">I", request[5:9])[0]
@@ -276,6 +337,9 @@ class Peer:
             # Send piece message
             piece = struct.pack(">IBIII", piece_length + 9, 7, piece_index, offset, piece_data)
             sock.send(piece)
+            self.upload_lock.acquire()
+            self.client_being_uploaded[address]['uploaded'] += len(piece_data)
+            self.upload_lock.release()
 
             print(f"{address} uploaded piece {piece_index}.")
         else:
@@ -359,6 +423,19 @@ class Peer:
                 return None
         else: # multifile
             pass
+
+    def _update_download_speeds(self):
+        self.download_lock.acquire()
+        for info_hash, info in self.downloading_data.items():
+            elapsed_time = time.time() - info["last_seen"]
+            if elapsed_time > 0:
+                info["download_speed"] = info["downloaded"] / elapsed_time
+                info["downloaded"] = 0  # Reset uploaded bytes for the next interval
+                info["last_seen"] = time.time()
+
+        self.download_lock.release()
+        timer = threading.Timer(1, self._update_download_speeds)
+        timer.start()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

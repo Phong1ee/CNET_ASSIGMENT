@@ -22,7 +22,7 @@ class Tracker:
                                 self.swarms.remove(swarm)
                             return
                         elif event == "completed":
-                            peer["seeder"] = True
+                            peer["seeder"] = 1
                             return
                         else:
                             # Update peer information if needed
@@ -91,7 +91,7 @@ class Tracker:
         if not (info_hash and peer_id and port):
             error_flag = 1
 
-        is_seeder = True if left == '0' else False
+        is_seeder = 1 if left == '0' else 0
         self._update_swarms(info_hash, peer_id, ip, port, is_seeder, event)
 
         response = self._prepare_response_params(info_hash, error_flag, numwant, peer_id)
