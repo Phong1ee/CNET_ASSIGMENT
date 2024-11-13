@@ -162,17 +162,17 @@ class Peer:
         pstrlen = struct.pack("B", 19)
         pstr = b"BitTorrent protocol"
         reserved = b"\x00" * 8
-        handshake = pstrlen + pstr + reserved + info_hash + self.id.encode()
+        handshake = pstrlen + pstr + reserved + info_hash + self.id
 
         # Send handshake
-        sock.send(handshake)
+        sock.send(handshake.encode())
 
         # Receive handshake
-        peer_handshake = sock.recv(68)
+        peer_handshake = sock.recv(68).decode()
 
         if self._validate_handshake(peer_handshake, info_hash, peer['peer_id']):
             # Receive unchoke message
-            unchoke = sock.recv(5)
+            unchoke = sock.recv(5).decode()
             if unchoke[-1] == 1:
                 # Send request message
                 offset = 0
@@ -180,7 +180,7 @@ class Peer:
                 sock.send(request)
 
                 # Receive piece message
-                piece = sock.recv(piece_length + 9)
+                piece = sock.recv(piece_length + 9).decode()
 
                 # Validate piece
                 received_piece_length = struct.unpack(">I", piece[0:4])[0]
@@ -238,17 +238,17 @@ class Peer:
             pstrlen = struct.pack("B", 19)
             pstr = b"BitTorrent protocol"
             reserved = b"\x00" * 8
-            handshake = pstrlen + pstr + reserved + torrent.infohash + self.id.encode()
+            handshake = pstrlen + pstr + reserved + torrent.infohash + self.id
 
             # Send handshake
-            sock.send(handshake)
+            sock.send(handshake.encode())
 
             # Send unchoke message
             unchoke = struct.pack(">IB", 1, 1)
             sock.send(unchoke)
 
             # Receive request message
-            request = sock.recv(17)
+            request = sock.recv(17).decode()
             piece_index = struct.unpack(">I", request[5:9])[0]
             offset = struct.unpack(">I", request[9:13])[0]
             piece_length = struct.unpack(">I", request[13:17])[0]
