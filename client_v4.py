@@ -243,6 +243,20 @@ class Peer:
         for thread in download_threads:
             thread.join()
 
+        # Check if all pieces have been downloaded
+        self.downloaded_lock.acquire()
+        # count if the number of pieces downloaded is equal to the number of pieces in the torrent
+        if len(self.downloaded_data[torrent.infohash]) == torrent.pieces:
+            self.downloading_lock.acquire()
+            self.downloading -= 1
+            self.downloading_data.pop(torrent.infohash)
+            self.downloading_lock.release()
+        else:
+            print("missing some pieces")
+            return 1
+
+        self.downloaded_lock.release()
+
         # Save downloaded data to file
         piece_idx = 0
         for f in torrent.files:
