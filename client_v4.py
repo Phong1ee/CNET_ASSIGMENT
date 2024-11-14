@@ -1,14 +1,15 @@
-from torf import Torrent
-import threading
-from threading import Thread
 import argparse
-import bencodepy
-import struct
-import socket
-import os
-import requests
 import hashlib
+import os
+import socket
+import struct
+import threading
 import time
+from threading import Thread
+
+import bencodepy
+import requests
+from torf import Torrent
 
 client_prefix = "-ST0001-"
 
@@ -131,6 +132,7 @@ class BitTorrentApp:
             download_thread.start()
         print("--------------------------------------------")
         input("Enter to return...")
+        return
 
     def donwload_status(self):
         downloading = self.peer.downloading
@@ -185,6 +187,7 @@ class Peer:
 
     def download_thread(self, peers, torrent):
         # Initialize tracking variables
+        stop_event = threading.Event()
         self.downloaded_data[torrent.infohash] = {}
         files = {}  # List of files to be downloaded
         pointer = 0
@@ -236,12 +239,15 @@ class Peer:
             peer_idx = (peer_idx + 1) % len(peers)
 
         [thread.start() for thread in download_threads]
-        timer = threading.Timer(1, self._update_download_speeds)
+        timer = threading.Timer(1, self._update_download_speeds, args=(stop_event))
         timer.start()
 
         # Wait for all threads to finish
         for thread in download_threads:
             thread.join()
+
+        # Stop the timer
+        stop_event.set()
 
         # Check if all pieces have been downloaded
         self.downloaded_lock.acquire()
@@ -391,11 +397,13 @@ class Peer:
         print(f"{address} is requesting connection.")
 
         # Receive handshake
-        peer_handshake = sock.recv(68).decode()
+        peer_handshake = sock.recv(68)
         print(f"received handshake: {peer_handshake}")
 
         info_hash = peer_handshake[28:48]
+        print(f"info_hash: {info_hash}")
         peer_id = peer_handshake[48:68]
+        print(f"peer_id: {peer_id}")
         torrent_file = self._check_local_repo(info_hash)
 
         if torrent_file:
@@ -410,7 +418,11 @@ class Peer:
             pstr = b"BitTorrent protocol"
             reserved = b"\x00" * 8
             handshake = (
-                pstrlen + pstr + reserved + torrent.infohash.encode() + self.id.encode()
+                pstrlen
+                + pstr
+                + reserved
+                + torrent.infohash.encode("utf-8")
+                + self.id.encode("utf-8")
             )
 
             # Send handshake
@@ -511,9 +523,10 @@ class Peer:
         return True
 
     def _check_local_repo(self, info_hash):
-        torrent_files = [f for f in os.listdir("/") if f.endswith(".torrent")]
+        torrent_files = [f for f in os.listdir("./") if f.endswith(".torrent")]
         for torrent_file in torrent_files:
             torrent = Torrent.read(torrent_file)
+            # print(f"torrent.infohash: {torrent.infohash}")
             if torrent.infohash == info_hash:
                 return torrent_file
         return None
@@ -537,18 +550,19 @@ class Peer:
         else:  # multifile
             pass
 
-    def _update_download_speeds(self):
-        self.downloading_lock.acquire()
-        for info in self.downloading_data.values():
-            elapsed_time = time.time() - info["last_seen"]
-            if elapsed_time > 0:
-                info["download_speed"] = info["downloaded"] / elapsed_time
-                info["downloaded"] = 0  # Reset uploaded bytes for the next interval
-                info["last_seen"] = time.time()
+    def _update_download_speeds(self, stop_event):
+        if not stop_event.is_set():
+            self.downloading_lock.acquire()
+            for info in self.downloading_data.values():
+                elapsed_time = time.time() - info["last_seen"]
+                if elapsed_time > 0:
+                    info["download_speed"] = info["downloaded"] / elapsed_time
+                    info["downloaded"] = 0  # Reset uploaded bytes for the next interval
+                    info["last_seen"] = time.time()
 
-        self.downloading_lock.release()
-        timer = threading.Timer(1, self._update_download_speeds)
-        timer.start()
+            self.downloading_lock.release()
+            timer = threading.Timer(1, self._update_download_speeds, args=(stop_event))
+            timer.start()
 
 
 if __name__ == "__main__":
