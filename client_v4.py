@@ -401,9 +401,9 @@ class Peer:
         peer_handshake = sock.recv(68)
         print(f"received handshake: {peer_handshake}")
 
-        info_hash = peer_handshake[28:48]
+        info_hash = peer_handshake[28:48].hex()
         print(f"info_hash: {info_hash}")
-        peer_id = peer_handshake[48:68]
+        peer_id = peer_handshake[48:68].decode("utf-8")
         print(f"peer_id: {peer_id}")
         torrent_file = self._check_local_repo(info_hash)
 
@@ -511,10 +511,14 @@ class Peer:
         peer_id = peer_handshake[48:].decode("utf-8")
 
         if info_hash != expected_info_hash:
-            print("Info hash mismatch.")
+            print(
+                f"Info hash mismatch. Expected: {expected_info_hash}, received: {info_hash}"
+            )
             return False
-        if peer_id == expected_peer_id:
-            print("Peer ID mismatch.")
+        if peer_id != expected_peer_id:
+            print(
+                f"Peer ID mismatch. Expected: {expected_peer_id}, Received: {peer_id}"
+            )
             return False
 
         return True
