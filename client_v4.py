@@ -1,4 +1,3 @@
-from math import exp
 from torf import Torrent
 import threading
 from threading import Thread
@@ -295,6 +294,7 @@ class Peer:
                 upload_threads.append(new_upload_thread)
         except KeyboardInterrupt:
             stop_event.set()
+            print("keyboard interrupt at upload thread")
         finally:
             server_socket.close()
             [thread.join() for thread in upload_threads]
@@ -561,9 +561,12 @@ if __name__ == "__main__":
     peer = Peer(host, port)
 
     stop_event = threading.Event()
-    upload_thread = Thread(target=peer.upload_thread, args=(host, port, stop_event))
+    upload_thread = Thread(
+        target=peer.upload_thread, args=(host, port, stop_event), daemon=True
+    )
     upload_thread.start()
 
     app = BitTorrentApp(peer)
     app.run()
+    print("app stopped")
     exit()
