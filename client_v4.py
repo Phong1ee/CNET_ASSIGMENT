@@ -239,7 +239,7 @@ class Peer:
             peer_idx = (peer_idx + 1) % len(peers)
 
         [thread.start() for thread in download_threads]
-        timer = threading.Timer(1, self._update_download_speeds, args=(stop_event))
+        timer = threading.Thread(target=self._update_download_speeds, daemon=True)
         timer.start()
 
         # Wait for all threads to finish
@@ -550,8 +550,8 @@ class Peer:
         else:  # multifile
             pass
 
-    def _update_download_speeds(self, stop_event):
-        if not stop_event.is_set():
+    def _update_download_speeds(self):
+        while not stop_event.is_set():
             self.downloading_lock.acquire()
             for info in self.downloading_data.values():
                 elapsed_time = time.time() - info["last_seen"]
@@ -559,10 +559,8 @@ class Peer:
                     info["download_speed"] = info["downloaded"] / elapsed_time
                     info["downloaded"] = 0  # Reset uploaded bytes for the next interval
                     info["last_seen"] = time.time()
-
             self.downloading_lock.release()
-            timer = threading.Timer(1, self._update_download_speeds, args=(stop_event))
-            timer.start()
+            time.sleep(1)
 
 
 if __name__ == "__main__":
