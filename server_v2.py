@@ -25,9 +25,9 @@ class Tracker:
         for swarm in self.swarms:
             if swarm["info_hash"] == info_hash:
                 for i, peer in enumerate(swarm["peers"]):
-                    if peer["ip"] == ip and peer["port"] == port:
+                    if peer["ip"] == ip:
                         # Update peer information, including peer_id and seeder status
-                        print(f"Updating new Peer_ID for {ip}:{port}")
+                        print(f"Updating new Peer_ID for {ip}")
                         swarm["peers"][i]["peer_id"] = peer_id
                         swarm["peers"][i]["seeder"] = is_seeder
 

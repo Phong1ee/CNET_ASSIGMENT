@@ -1,3 +1,4 @@
+from math import exp
 from torf import Torrent
 import threading
 from threading import Thread
@@ -276,7 +277,7 @@ class Peer:
                     self.downloaded_lock.release()
         return 0
 
-    def upload_thread(self, host, port):
+    def upload_thread(self, host, port, stop_event):
         # Create a server socket
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind((host, port))
@@ -284,18 +285,19 @@ class Peer:
 
         # Listen for incoming connections
         upload_threads = []
-        while True:
-            try:
+        try:
+            while not stop_event.is_set():
                 client_socket, address = server_socket.accept()
                 new_upload_thread = Thread(
                     target=self._upload_piece, args=(client_socket, address)
                 )
                 new_upload_thread.start()
                 upload_threads.append(new_upload_thread)
-            except KeyboardInterrupt:
-                server_socket.close()
-                [thread.join() for thread in upload_threads]
-                return 0
+        except KeyboardInterrupt:
+            stop_event.set()
+        finally:
+            server_socket.close()
+            [thread.join() for thread in upload_threads]
 
     def _download_piece(self, peer, info_hash, piece_index, hashes, piece_length):
         print(f"Connecting to {peer['ip']}:{peer['port']}")
@@ -496,7 +498,7 @@ class Peer:
         return True
 
     def _check_local_repo(self, info_hash):
-        torrent_files = [f for f in os.listdir() if f.endswith(".torrent")]
+        torrent_files = [f for f in os.listdir("/") if f.endswith(".torrent")]
         for torrent_file in torrent_files:
             torrent = Torrent.read(torrent_file)
             if torrent.infohash == info_hash:
@@ -558,7 +560,8 @@ if __name__ == "__main__":
 
     peer = Peer(host, port)
 
-    upload_thread = Thread(target=peer.upload_thread, args=(host, port), daemon=True)
+    stop_event = threading.Event()
+    upload_thread = Thread(target=peer.upload_thread, args=(host, port, stop_event))
     upload_thread.start()
 
     app = BitTorrentApp(peer)
