@@ -239,10 +239,9 @@ class Peer:
         timer = threading.Timer(1, self._update_download_speeds)
         timer.start()
 
-        # for thread in download_threads:
-        #     thread.join()
-        #     piece_idx, piece_data = thread.result()
-        #     downloaded_data[piece_idx] = piece_data
+        # Wait for all threads to finish
+        for thread in download_threads:
+            thread.join()
 
         # Save downloaded data to file
         piece_idx = 0
@@ -319,7 +318,7 @@ class Peer:
 
             # Send handshake
             sock.send(handshake)
-            print("sent handshake")
+            print(f"sent handshake: {handshake}")
 
             # Receive handshake
             peer_handshake = sock.recv(68).decode()
