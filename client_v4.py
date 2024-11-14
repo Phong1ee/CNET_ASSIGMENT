@@ -40,9 +40,9 @@ class BitTorrentApp:
         self.peer = peer
 
     def run(self):
-        # self.clear()
-        # self.download_torrent()
-        # return
+        self.clear()
+        self.download_torrent()
+        return
         while True:
             self.clear()
             option = self.menu()
@@ -98,8 +98,8 @@ class BitTorrentApp:
         print(f"Name: {torrent.name}")
         print(f"Size: {torrent.size} bytes")
         print(f"Piece size: {torrent.piece_size} bytes")
-        print(f"Number of pieces: {torrent.pieces}")
         print(f"Number of files: {len(torrent.files)}")
+        print(f"Number of pieces: {torrent.pieces}")
         print("--------------------------------------------")
 
         # Prepare the parameters
@@ -117,11 +117,13 @@ class BitTorrentApp:
         }
 
         # Get peer list from tracker
-        print("Requesting peers from tracker...")
+        print(f"Requesting peers from tracker {args.tracker_url+'/announce'}...")
         peers = self.peer._request_peers(args.tracker_url + "/announce", params)
         if peers == 1:
-            print("[Error] Tracker request failed.")
+            print("[Error] Connection to tracker failed.")
         elif peers == 2:
+            pass
+        elif peers == 3:
             print("[Error] No peers found.")
         else:
             print("Starting download...")
@@ -298,7 +300,7 @@ class Peer:
     def _download_piece(self, peer, info_hash, piece_index, hashes, piece_length):
         print(f"Connecting to {peer['ip']}:{peer['port']}")
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(10)
+        sock.settimeout(5)
         self.downloading_lock.acquire()
         self.downloading_data[info_hash]["connected_peers"] += 1
         self.downloading_lock.release()
@@ -315,23 +317,27 @@ class Peer:
 
             # Send handshake
             sock.send(handshake)
+            print("sent handshake")
 
             # Receive handshake
             peer_handshake = sock.recv(68).decode()
+            print(f"received handshake: {peer_handshake}")
 
             if self._validate_handshake(peer_handshake, info_hash, peer["peer_id"]):
+                print("Handshake successful")
                 # Receive unchoke message
                 unchoke = sock.recv(5).decode()
                 if unchoke[-1] == 1:
+                    print("Unchoked")
                     # Send request message
                     offset = 0
                     request = struct.pack(
                         ">IBIII", 13, 6, piece_index, offset, piece_length
                     )
                     sock.send(request)
-
                     # Receive piece message
                     piece = sock.recv(piece_length + 9)
+                    print(f"received piece: {piece.decode()}")
 
                     # Validate piece
                     piece_data = piece[9:]
@@ -371,6 +377,7 @@ class Peer:
 
         # Receive handshake
         peer_handshake = sock.recv(68).decode()
+        print(f"received handshake: {peer_handshake}")
 
         info_hash = peer_handshake[28:48]
         peer_id = peer_handshake[48:68]
@@ -393,10 +400,12 @@ class Peer:
 
             # Send handshake
             sock.send(handshake)
+            print("sent handshake")
 
             # Send unchoke message
             unchoke = struct.pack(">IB", 1, 1)
             sock.send(unchoke)
+            print("sent unchoke")
 
             self.upload_lock.acquire()
             self.uploading += 1
@@ -422,6 +431,7 @@ class Peer:
                 ">IBIII", piece_length + 9, 7, piece_index, offset, piece_data
             )
             sock.send(piece)
+            print("sent piece")
             self.upload_lock.acquire()
             self.client_being_uploaded[address]["uploaded"] += len(piece)
             self.upload_lock.release()
@@ -436,11 +446,16 @@ class Peer:
 
     def _request_peers(self, tracker_url, params):
         # Send GET request with params to tracker
-        raw_response = requests.get(tracker_url, params=params)
+        try:
+            raw_response = requests.get(tracker_url, params=params)
+        except requests.exceptions.RequestException as e:
+            print(f"{e}")
+            return 1
         response = bencodepy.decode(raw_response.content)
         response = {k.decode("utf-8"): v for k, v in response.items()}
         if "failure reason" in response:
-            return 1
+            print(f"[Error] Response from tracker {response['failure reason']}")
+            return 2
 
         peers = response["peers"]
         for peer in peers:
@@ -455,7 +470,7 @@ class Peer:
         if peers:
             return peers
         else:
-            return 2
+            return 3
 
     def _validate_handshake(self, peer_handshake, expected_info_hash, expected_peer_id):
         if len(peer_handshake) != 68:
@@ -549,4 +564,3 @@ if __name__ == "__main__":
     app = BitTorrentApp(peer)
     app.run()
     exit()
-
