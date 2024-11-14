@@ -5,6 +5,7 @@ import socket
 import struct
 import threading
 import time
+import random
 from threading import Thread
 
 import bencodepy
@@ -174,7 +175,7 @@ class Peer:
     def __init__(self, host, port):
         self.host = host
         self.port = port
-        unique_component = os.urandom(12).hex()
+        unique_component = str(random.randint(0, 999999999999)).zfill(12)
         self.id = f"{client_prefix}{unique_component}"
         self.uploading = 0
         self.downloading = 0
@@ -332,16 +333,16 @@ class Peer:
             pstrlen = struct.pack("B", 19)
             pstr = b"BitTorrent protocol"
             reserved = b"\x00" * 8
-            handshake = (
-                pstrlen + pstr + reserved + info_hash.encode() + self.id.encode()
-            )
+            info_hash = bytes.fromhex(info_hash)
+            peer_id = self.id.encode("utf-8")
+            handshake = pstrlen + pstr + reserved + info_hash + peer_id
 
             # Send handshake
             sock.send(handshake)
-            print(f"sent handshake: {handshake}")
+            print(f"sent handshake: {handshake} with length {len(handshake)}")
 
             # Receive handshake
-            peer_handshake = sock.recv(68).decode()
+            peer_handshake = sock.recv(68)
             print(f"received handshake: {peer_handshake}")
 
             if self._validate_handshake(peer_handshake, info_hash, peer["peer_id"]):
@@ -417,13 +418,9 @@ class Peer:
             pstrlen = struct.pack("B", 19)
             pstr = b"BitTorrent protocol"
             reserved = b"\x00" * 8
-            handshake = (
-                pstrlen
-                + pstr
-                + reserved
-                + torrent.infohash.encode("utf-8")
-                + self.id.encode("utf-8")
-            )
+            info_hash = bytes.fromhex(info_hash)
+            peer_id = self.id.encode("utf-8")
+            handshake = pstrlen + pstr + reserved + info_hash + peer_id
 
             # Send handshake
             sock.send(handshake)
@@ -504,14 +501,14 @@ class Peer:
             return False
 
         pstrlen = struct.unpack("B", peer_handshake[0:1])[0]
-        pstr = peer_handshake[1:20].decode("utf-8", errors="ignore")
+        pstr = peer_handshake[1:20].decode()
 
         if pstrlen != 19 or pstr != "BitTorrent protocol":
             print("Invalid protocol string.")
             return False
 
-        info_hash = peer_handshake[28:48]
-        peer_id = peer_handshake[48:68]
+        info_hash = peer_handshake[28:48].hex()
+        peer_id = peer_handshake[48:].decode("utf-8")
 
         if info_hash != expected_info_hash:
             print("Info hash mismatch.")
