@@ -42,9 +42,6 @@ class BitTorrentApp:
         self.peer = peer
 
     def run(self):
-        self.clear()
-        self.download_torrent()
-        return
         while True:
             self.clear()
             option = self.menu()
@@ -59,7 +56,7 @@ class BitTorrentApp:
                 self.clear()
                 self.upload_status()
             elif option == "4":
-                break
+                self.exit()
             else:
                 print("Invalid option")
 
@@ -169,6 +166,11 @@ class BitTorrentApp:
 
     def clear(self):
         os.system("cls" if os.name == "nt" else "clear")
+
+    def exit(self):
+        print("Exiting...")
+        self.peer._announce_stop(args.tracker_url + "/announce")
+        exit()
 
 
 class Peer:
@@ -333,13 +335,13 @@ class Peer:
             pstrlen = struct.pack("B", 19)
             pstr = b"BitTorrent protocol"
             reserved = b"\x00" * 8
-            info_hash = bytes.fromhex(info_hash)
+            infohash = bytes.fromhex(info_hash)
             peer_id = self.id.encode("utf-8")
-            handshake = pstrlen + pstr + reserved + info_hash + peer_id
+            handshake = pstrlen + pstr + reserved + infohash + peer_id
 
             # Send handshake
             sock.send(handshake)
-            print(f"sent handshake: {handshake} with length {len(handshake)}")
+            print(f"sent handshake: {handshake}")
 
             # Receive handshake
             peer_handshake = sock.recv(68)
@@ -348,8 +350,8 @@ class Peer:
             if self._validate_handshake(peer_handshake, info_hash, peer["peer_id"]):
                 print("Handshake successful")
                 # Receive unchoke message
-                unchoke = sock.recv(5).decode()
-                if unchoke[-1] == 1:
+                unchoke = sock.recv(5)
+                if unchoke == struct.pack(">IB", 1, 1):
                     print("Unchoked")
                     # Send request message
                     offset = 0
@@ -402,8 +404,8 @@ class Peer:
         print(f"received handshake: {peer_handshake}")
 
         info_hash = peer_handshake[28:48].hex()
-        print(f"info_hash: {info_hash}")
         peer_id = peer_handshake[48:68].decode("utf-8")
+        print(f"info_hash: {info_hash}")
         print(f"peer_id: {peer_id}")
         torrent_file = self._check_local_repo(info_hash)
 
@@ -442,7 +444,10 @@ class Peer:
             self.upload_lock.release()
 
             # Receive request message
-            request = sock.recv(17).decode()
+            request = None
+            while not request:
+                request = sock.recv(17)
+
             piece_index = struct.unpack(">I", request[5:9])[0]
             offset = struct.unpack(">I", request[9:13])[0]
             piece_length = struct.unpack(">I", request[13:17])[0]
@@ -562,6 +567,27 @@ class Peer:
                     info["last_seen"] = time.time()
             self.downloading_lock.release()
             time.sleep(1)
+
+    def _announce_stop(self, tracker_url):
+        params = {
+            "info_hash": "",
+            "peer_id": self.id,
+            "ip": self.host,
+            "port": self.port,
+            "uploaded": 0,
+            "downloaded": 0,
+            "left": 0,
+            "compact": 0,
+            "event": "stopped",
+            "numwant": 0,
+        }
+        raw_response = requests.get(tracker_url, params=params)
+        response = bencodepy.decode(raw_response.content)
+        response = {k.decode("utf-8"): v for k, v in response.items()}
+        if "failure reason" in response:
+            print(f"[Error] Response from tracker {response['failure reason']}")
+            return 1
+        return 0
 
 
 if __name__ == "__main__":

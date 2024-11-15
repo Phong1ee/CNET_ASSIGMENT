@@ -22,6 +22,20 @@ class Tracker:
                 print(f"    seeder: {peer['seeder']}")
 
     def _update_swarms(self, info_hash, peer_id, ip, port, is_seeder, event):
+        # Remove peer from swarm if event is "stopped"
+        if event == "stopped":
+            print("there are swarms:", self.swarms)
+            for swarm in self.swarms:
+                print(f"Checking swarm {swarm['info_hash']}")
+                for i, peer in enumerate(swarm["peers"]):
+                    if peer["ip"] == ip:
+                        swarm["peers"].pop(i)
+                        print(f"Peer {peer_id} has left the swarm {swarm['info_hash']}")
+                        if not swarm["peers"]:
+                            print(f"Swarm {swarm['info_hash']} is empty, removing it")
+                            self.swarms.remove(swarm)
+                        break
+
         for swarm in self.swarms:
             if swarm["info_hash"] == info_hash:
                 for i, peer in enumerate(swarm["peers"]):
@@ -30,12 +44,6 @@ class Tracker:
                         print(f"Updating new Peer_ID for {ip}")
                         swarm["peers"][i]["peer_id"] = peer_id
                         swarm["peers"][i]["seeder"] = is_seeder
-
-                        if event == "stopped":
-                            swarm["peers"].pop(i)
-                            if not swarm["peers"]:
-                                self.swarms.remove(swarm)
-                            return
                         return
 
                 # If the peer doesn't exist, add it to the swarm
