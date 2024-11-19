@@ -1,5 +1,6 @@
 import hashlib
 
+
 class PieceManager:
     def __init__(self, torrent_info):
         self.num_pieces = torrent_info.num_pieces
@@ -55,3 +56,4 @@ class PieceManager:
     def downloaded_pieces(self):
         """Returns a list of indices of downloaded pieces."""
         return [i for i, bit in enumerate(self.bitfield) if bit == 1]
+

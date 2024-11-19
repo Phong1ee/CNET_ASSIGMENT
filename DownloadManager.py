@@ -1,16 +1,12 @@
 class DownloadManager:
-    def __init__(self, torrent_info, destination_path, file_manager, piece_manager):
-        self.torrent_info = torrent_info
+    def __init__(self, destination_path, file_manager, piece_manager):
         self.destination_path = destination_path
         self.file_manager = file_manager
         self.piece_manager = piece_manager
 
-        # Other attributes:
-        self.download_rate = 0
-        self.downloaded_total = 0
-        self.num_connected_peers = 0
-        self.file_name = torrent_info.name
-        self.file_size = torrent_info.total_length
+        self.download_rate = {}
+        self.downloaded_total = {}
+        self.num_connected_peers = {}
 
     def connect_peer(self, peer_info):
         """Connects to a peer and returns a socket object.
@@ -85,3 +81,47 @@ class DownloadManager:
     def send_info_to_ui(self):
         """Sends the information of the download process to UI"""
         pass
+import threading
+
+class DownloadManager:
+    _instance = None
+
+    def __init__(self):
+        self.downloads = {}  # A dictionary to store active downloads
+        self.lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = DownloadManager()
+        return cls._instance
+
+    def new_download(self, torrent_info, destination_path, file_manager, piece_manager):
+        with self.lock:
+            download_id = len(self.downloads)
+            self.downloads[download_id] = {
+                'torrent_info': torrent_info,
+                'destination_path': destination_path,
+                'file_manager': file_manager,
+                'piece_manager': piece_manager,
+                'download_thread': threading.Thread(target=self._download, args=(download_id,))
+            }
+            self.downloads[download_id]['download_thread'].start()
+
+    def _download(self, download_id):
+        # ... (Implement the download logic as before)
+        # Remember to update the `self.downloads[download_id]` dictionary with progress information.
+
+    def pause_download(self, download_id):
+        # ... (Implement logic to pause a download)
+
+    def resume_download(self, download_id):
+        # ... (Implement logic to resume a download)
+
+    def cancel_download(self, download_id):
+        # ... (Implement logic to cancel a download)
+
+    def get_download_status(self, download_id):
+        # ... (Return the status of a download, e.g., progress, speed, remaining time)
+
+    # Other methods for managing downloads, such as prioritizing, limiting bandwidth, etc.
