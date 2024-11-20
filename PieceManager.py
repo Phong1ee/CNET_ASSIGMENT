@@ -7,6 +7,18 @@ class PieceManager:
         self.piece_length = torrent_info.piece_length
         self.bitfield = [0] * self.num_pieces  # Initialize bitfield to all zeros
 
+    def save_piece(self, piece_data: bytes, piece_index: int, file_path: str):
+        """Saves a downloaded piece to the file system.
+
+        Args:
+            piece_data (str): The downloaded piece data.
+            piece_index (int): The index of the downloaded piece.
+            file_path (str): The path to the downloaded file
+        """
+        with open(file_path, "r+b") as file:
+            file.seek(piece_index * self.piece_length)
+            file.write(piece_data)
+
     def verify_piece(self, piece_data, piece_hash):
         """Verifies the integrity of a downloaded piece.
 
@@ -56,4 +68,3 @@ class PieceManager:
     def downloaded_pieces(self):
         """Returns a list of indices of downloaded pieces."""
         return [i for i, bit in enumerate(self.bitfield) if bit == 1]
-

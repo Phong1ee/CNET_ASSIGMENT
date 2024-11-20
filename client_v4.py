@@ -15,18 +15,6 @@ from torf import Torrent
 client_prefix = "-ST0001-"
 
 
-def get_host_default_interface_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("8.8.8.8", 1))
-        ip = s.getsockname()[0]
-    except Exception:
-        ip = "127.0.0.1"
-    finally:
-        s.close()
-    return ip
-
-
 def get_random_port(start=6881, end=6889):
     for port in range(start, end + 1):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -205,7 +193,7 @@ class Peer:
             end = pointer + size
             if end % torrent.piece_size != 0:
                 trailing_end = end % torrent.piece_size
-                # print("trailing_end: ", trailing_end)
+                # priqt("trailing_end: ", trailing_end)
             pointer += size
             files[name] = {"trail_start": trailing_start, "trail_end": trailing_end}
 

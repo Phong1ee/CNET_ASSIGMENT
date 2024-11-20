@@ -1,8 +1,12 @@
 class FileManager:
-    def __init__(self, torrent_info, destination_path):
-        self.torrent_info = torrent_info
+    def __init__(self, target_path: str, destination_path: str):
+        """Initialize the FileManager object.
+
+        Args:
+            target_path (str): Path to the folder storing the torrents
+            destination_path (str): Path to the destination folder
+        """
         self.destination_path = destination_path
-        self.file_tree = self.build_file_tree(torrent_info)
 
     def build_file_tree(self, torrent_info):
         """Builds a file tree based on the torrent information.
@@ -46,3 +50,4 @@ class FileManager:
         This involves checking the existing files, calculating the missing pieces, and updating the bitfield.
         """
         # ... (Implement logic to check file integrity, update bitfield, and resume download)
+
