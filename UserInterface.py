@@ -5,32 +5,35 @@ from torf import Torrent
 
 from DownloadManager import DownloadManager
 from FileManager import FileManager
-from TrackerCommunicate import TrackerCommunicate
+from TrackerCommunicator import TrackerCommunicator
 from UploadManager import UploadManager
 
 
 class UserInterface:
     def __init__(
         self,
-        dest_path: str,
+        torrent_dir: str,
+        dest_dir: str,
         downloadManager: DownloadManager,
         uploadManager: UploadManager,
-        trackerCommunicate: TrackerCommunicate,
+        trackerCommunicator: TrackerCommunicator,
         fileManager: FileManager,
     ):
         """Initialize a UserInterface object
 
         Args:
-            dest_path (str): Path to desired download folder
+            torrent_dir (str): Path to the folder storing the torrents
+            dest_dir (str): Path to desired download folder
             downloadManager (DownloadManager.DownloadManager): DownloadManager object
             uploadManager (UploadManager.UploadManager): UploadManager object
-            trackerCommunicate (TrackerCommunicate.TrackerCommunicate): TrackerCommunicate object
+            trackerCommunicator (TrackerCommunicator.TrackerCommunicator): TrackerCommunicator object
             fileManager (FileManager.FileManager): FileManager object
         """
-        self.dest_path = dest_path
+        self.torrent_dir = torrent_dir
+        self.dest_dir = dest_dir
         self.downloadManager = downloadManager
         self.uploadManager = uploadManager
-        self.trackerCommunicate = trackerCommunicate
+        self.trackerCommunicator = trackerCommunicator
         self.fileManager = fileManager
 
     def run(self):
@@ -43,6 +46,9 @@ class UserInterface:
                     self.clear()
                     self.new_download()
                 case "2":
+                    self.clear()
+                    self.new_upload()
+                case "3":
                     self.clear()
                     self.show_downloading()
                 case "4":
@@ -71,6 +77,8 @@ class UserInterface:
     def new_download(self):
         # Input the .torrent file
         torrent = self._input_torrent()
+        if torrent is None:
+            return 1
 
         # Display the file information
         print("--------------------------------------------")
@@ -82,10 +90,44 @@ class UserInterface:
         print(f"Number of pieces: {torrent.pieces}")
         print("--------------------------------------------")
 
-        # Start the download process
-        self.downloadManager.new_download(torrent, self.dest_path)
+        # Send GET request to the tracker and get the peer list
+        peer_list = self.trackerCommunicator.download_announce(torrent)
+        if peer_list is None:
+            input("Enter to return...")
+            return
 
+        # Start the download process
+        self.downloadManager.new_download(
+            torrent,
+            peer_list,
+        )
+
+        # print("--------------------------------------------")
+        input("Enter to return...")
+
+    def new_upload(self):
+        # Input the .torrent file
+        torrent = self._input_torrent()
+        if torrent is None:
+            return 1
+
+        # Display the file information
         print("--------------------------------------------")
+        print("Torrent file information:")
+        print(f"Name: {torrent.name}")
+        print(f"Size: {torrent.size} bytes")
+        print(f"Piece size: {torrent.piece_size} bytes")
+        print(f"Number of files: {len(torrent.files)}")
+        print(f"Number of pieces: {torrent.pieces}")
+        print("--------------------------------------------")
+
+        # Create the tracking variable in UploadManager
+        self.uploadManager.new_upload(torrent)
+
+        # Announce the completed event to the tracker
+        self.trackerCommunicator.upload_announce(torrent)
+
+        # print("--------------------------------------------")
         input("Enter to return...")
 
     def show_downloading(self):
@@ -114,26 +156,23 @@ class UserInterface:
         print("--------------------------------------------")
         input("Enter to return...")
 
-    def _input_torrent(self) -> Torrent:
+    def _input_torrent(self):
         """Get user input the path to a torrent file and return the Torrent object.
 
         Returns:
             torrent: The Torrent object.
-
         """
         while True:
-            torrent_file = input(
+            torrent_name = input(
                 "Enter the path to the torrent file ('cancel' to return): "
             )
-            if torrent_file == "cancel":
-                break
+            if torrent_name == "cancel":
+                return
+            torrent_file = self.torrent_dir + torrent_name
             if not os.path.exists(torrent_file):
                 print("File not found. Please try again.")
             else:
                 break
-        if torrent_file == "cancel":
-            return
-
         torrent = Torrent.read(torrent_file)
 
         return torrent
@@ -143,5 +182,5 @@ class UserInterface:
 
     def exit(self):
         print("Exiting...")
-        self.trackerCommunicate.stopping_announce()
+        self.trackerCommunicator.stopping_announce()
         exit()

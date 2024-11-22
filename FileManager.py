@@ -1,12 +1,55 @@
+import torf
+import os
+from torf import Torrent
+
+
 class FileManager:
-    def __init__(self, target_path: str, destination_path: str):
+    def __init__(self, torrent_dir: str, destination_dir: str):
         """Initialize the FileManager object.
 
         Args:
-            target_path (str): Path to the folder storing the torrents
+            torrent_path (str): Path to the folder storing the torrents
             destination_path (str): Path to the destination folder
         """
-        self.destination_path = destination_path
+        self.torrent_dir = torrent_dir
+        self.destination_dir = destination_dir
+
+    def check_local_torrent(self, infohash: str):
+        """Check if the torrent file exists locally.
+
+        Args:
+            infohash (str): The infohash of the torrent.
+
+        Returns:
+            True if the torrent file exists, False otherwise.
+        """
+        files = self.list_torrents()
+        for file in files:
+            if Torrent.read(file).infohash == infohash:
+                return True
+        return False
+
+    def get_file_path(self, infohash: str):
+        """Get the file path of the torrent file.
+
+        Args:
+            infohash (str): The infohash of the torrent.
+
+        Returns:
+            The file path of the torrent file.
+        """
+        files = self.list_torrents()
+        for file in files:
+            if Torrent.read(file).infohash == infohash:
+                return os.path.join(self.torrent_dir, file)
+
+    def list_torrents(self):
+        """Lists all torrents in the torrent directory.
+        Returns:
+            A list of torrent files in self.torrent_dir.
+        """
+        files = [f for f in os.listdir(self.torrent_dir) if f.endswith(".torrent")]
+        return files
 
     def build_file_tree(self, torrent_info):
         """Builds a file tree based on the torrent information.
@@ -50,4 +93,3 @@ class FileManager:
         This involves checking the existing files, calculating the missing pieces, and updating the bitfield.
         """
         # ... (Implement logic to check file integrity, update bitfield, and resume download)
-
