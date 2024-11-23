@@ -13,13 +13,13 @@ class Tracker:
         self.swarms = {}
 
     def _print_swarm(self):
-        for swarm in self.swarms:
-            print(f"info_hash: {swarm['info_hash']}")
+        for info_hash, swarm in self.swarms.items():
+            print(f"Swarm for {info_hash}")
+            print(f"  Complete: {swarm['complete']}")
+            print(f"  Incomplete: {swarm['incomplete']}")
             for peer in swarm["peers"]:
-                print(f"    peer_id: {peer['peer_id']}")
-                print(f"    ip: {peer['ip']}")
-                print(f"    port: {peer['port']}")
-                print(f"    seeder: {peer['seeder']}")
+                print(f"    Peer: {peer['peer_id']} ({peer['ip']}:{peer['port']})")
+            print()
 
     # def _update_swarms(self, info_hash, peer_id, ip, port, is_seeder, event):
     #     # Remove peer from swarm if event is "stopped"
@@ -118,7 +118,7 @@ class Tracker:
         peer_id = request.query.get("peer_id")
         ip = request.query.get("ip")
         port = int(request.query.get("port"))
-        left = int(request.query.get("left"))
+        left = request.query.get("left")
         event = request.query.get("event")
         numwant = int(request.query.get("numwant", 50))
 
@@ -159,6 +159,9 @@ class Tracker:
                 if len(response["peers"]) >= numwant:
                     break
 
+        print("Responding to peer", peer_id)
+        print("Response:", response)
+        self._print_swarm()
         return web.Response(body=bencodepy.encode(response), content_type="text/plain")
 
 

@@ -28,6 +28,8 @@ def main(host: str, port: int):
     )
 
     ui = UserInterface(
+        host,
+        port,
         torrent_dir,
         dest_dir,
         downloadManager,
@@ -47,13 +49,14 @@ if __name__ == "__main__":
     parser.add_argument("--tracker-url", type=str, required=False)
     parser.add_argument("--torrent_dir", type=str, required=False)
     parser.add_argument("--dest-dir", type=str, required=False)
+    parser.add_argument("--port", type=int, required=False)
     args = parser.parse_args()
 
     tracker_url = "http://192.168.1.106"
 
     id = utils.get_id()
     host = utils.get_ip()
-    port = 6881
+    port = 6882
     torrent_dir = "./torrents/"
     dest_dir = "./download_path/"
 
@@ -63,5 +66,7 @@ if __name__ == "__main__":
         dest_dir = args.dir
     if args.torrent_dir:
         dest_dir = args.torrent_dir
+    if args.port:
+        port = args.port
 
     main(host, port)

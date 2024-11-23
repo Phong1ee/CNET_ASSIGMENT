@@ -14,6 +14,19 @@ class FileManager:
         self.torrent_dir = torrent_dir
         self.destination_dir = destination_dir
 
+    def write_single_file(self, destination_file_path, data, piece_size):
+        """Writes a single file from a dictionary of piece data.
+
+        Args:
+            destination_file_path (str): The path to the destination file.
+            data (dict[int, bytes]): A dictionary where keys are piece indices and values are piece data.
+            piece_size (int): The size of each piece, except possibly the last one.
+        """
+
+        with open(destination_file_path, "wb") as f:
+            for piece_index, piece_data in sorted(data.items()):
+                f.write(piece_data)
+
     def check_local_torrent(self, infohash: str):
         """Check if the torrent file exists locally.
 
@@ -25,11 +38,11 @@ class FileManager:
         """
         files = self.list_torrents()
         for file in files:
-            if Torrent.read(file).infohash == infohash:
+            if Torrent.read(self.torrent_dir + file).infohash == infohash:
                 return True
         return False
 
-    def get_file_path(self, infohash: str):
+    def get_torrent_file_path(self, infohash: str):
         """Get the file path of the torrent file.
 
         Args:
@@ -40,8 +53,23 @@ class FileManager:
         """
         files = self.list_torrents()
         for file in files:
-            if Torrent.read(file).infohash == infohash:
-                return os.path.join(self.torrent_dir, file)
+            if Torrent.read(self.torrent_dir + file).infohash == infohash:
+                # print("[INFO-FileManager-get_file_path]", self.torrent_dir + file)
+                return self.torrent_dir + file
+
+    def get_original_file_path(self, infohash: str):
+        """Get the original file path of the torrent file.
+
+        Args:
+            infohash (str): The infohash of the torrent.
+
+        Returns:
+            The original file path of the torrent file.
+        """
+        files = self.list_torrents()
+        for file in files:
+            if Torrent.read(self.torrent_dir + file).infohash == infohash:
+                return self.destination_dir + Torrent.read(self.torrent_dir + file).name
 
     def list_torrents(self):
         """Lists all torrents in the torrent directory.

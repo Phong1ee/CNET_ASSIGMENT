@@ -1,3 +1,4 @@
+import threading
 import hashlib
 import os
 from torf import Torrent
@@ -9,20 +10,26 @@ class PieceManager:
         self.piece_size = torrent.piece_size
         self.num_pieces = torrent.pieces
         self.hashes = torrent.hashes
-        self.bitfield = self.generate_empty_bitfield()
-        self.piece_offsets = [i * self.piece_size for i in range(self.num_pieces)]
         self.file_path = file_path
+        self.piece_offsets = [i * self.piece_size for i in range(self.num_pieces)]
+        self.bitfield = self.generate_bitfield()
+        self.downloaded_pieces: dict[int, bytes] = {}
+        self.remaining_pieces = self.num_pieces
+        self.lock = threading.Lock()
 
-    def save_piece(self, piece_data: bytes, piece_index: int):
-        """Saves a downloaded piece to the file system."""
-        with open(self.file_path, "r+b") as file:
-            file.seek(self.piece_offsets[piece_index])
-            file.write(piece_data)
+    def add_downloaded_piece(self, piece_data: bytes, piece_idx: int):
+        """Add the piece to the self.downloaded_pieces dictionary."""
+        with self.lock:
+            self.downloaded_pieces[piece_idx] = piece_data
+            self.remaining_pieces -= 1
+        self.update_bitfield(piece_idx)
 
-    def verify_piece(self, piece_data, piece_hash):
+    def verify_piece(self, piece_data, piece_idx):
         """Verifies the integrity of a downloaded piece."""
         calculated_hash = hashlib.sha1(piece_data).digest()
-        return calculated_hash == piece_hash
+        with self.lock:
+            expected_hash = self.hashes[piece_idx]
+        return calculated_hash == expected_hash
 
     def generate_empty_bitfield(self):
         """Generates an empty bitfield."""
@@ -65,19 +72,25 @@ class PieceManager:
         Args:
             piece_index: The index of the downloaded piece.
         """
-        self.bitfield[piece_index] = 1
+        with self.lock:
+            self.bitfield[piece_index] = 1
 
     def get_num_remaining_pieces(self):
         """Returns the number of remaining pieces to download."""
-        return self.num_pieces - sum(self.bitfield)
+        with self.lock:
+            return self.remaining_pieces
 
-    def get_not_downloaded_pieces(self):
+    def get_not_downloaded_indexes(self):
         """Returns a list of indices of not downloaded pieces."""
-        return [i for i, bit in enumerate(self.bitfield) if bit == 0]
+        with self.lock:
+            not_downloaded = [i for i, bit in enumerate(self.bitfield) if bit == 0]
+        return not_downloaded
 
-    def get_downloaded_pieces(self):
+    def get_downloaded_indexes(self):
         """Returns a list of indices of downloaded pieces."""
-        return [i for i, bit in enumerate(self.bitfield) if bit == 1]
+        with self.lock:
+            downloaded = [i for i, bit in enumerate(self.bitfield) if bit == 1]
+        return downloaded
 
     def get_piece_data(self, piece_idx):
         """
@@ -92,8 +105,23 @@ class PieceManager:
 
         try:
             with open(self.file_path, "rb") as f:
-                f.seek(piece_idx * self.piece_size)
-                piece_data = f.read(self.piece_size)
+                # print("[INFO-PieceManager-get_piece_data]", self.file_path)
+                offset = self.piece_offsets[piece_idx]
+
+                # Seek to the correct offset and read data
+                f.seek(offset)
+
+                # Read the piece based on remaining file size
+                remaining_size = min(
+                    self.piece_size, os.path.getsize(self.file_path) - offset
+                )
+                # print(
+                #     f"Reading piece {piece_idx} at offset {offset} with size {remaining_size}"
+                # )
+
+                piece_data = f.read(remaining_size)
+                # print("read piece data", piece_data)
+
                 return piece_data
         except FileNotFoundError:
             print(f"File not found: {self.file_path}")
@@ -101,3 +129,8 @@ class PieceManager:
         except Exception as e:
             print(f"Error reading piece: {e}")
             return None
+
+    def get_all_piece_data(self):
+        """Returns a dictionary of all downloaded pieces."""
+        with self.lock:
+            return self.downloaded_pieces

@@ -101,14 +101,20 @@ class TrackerCommunicator:
         else:
             infohash = infohash
 
+        if event == "completed":
+            left = 0
+        elif event == "started":
+            left = torrent_file.size
+        else:
+            left = self.downloadManager.get_bytes_left(infohash)
         params = {
             "info_hash": infohash,
             "peer_id": self.id,
             "ip": self.host,
             "port": self.port,
-            "uploaded": self.uploadManager.get_total_uploaded_infohash(infohash),
-            "downloaded": self.downloadManager.get_total_downloaded_infohash(infohash),
-            "left": self.downloadManager.get_bytes_left(infohash),
+            # "uploaded": self.uploadManager.get_total_uploaded_infohash(infohash),
+            # "downloaded": self.downloadManager.get_total_downloaded_infohash(infohash),
+            "left": left,
             "compact": 1,
             "event": event,
             "numwant": 0,
@@ -130,13 +136,20 @@ class TrackerCommunicator:
     def _send_announce_request(self, params):
         try:
             resp = requests.get(url=self.url + "/announce", params=params)
-            self.handle_response(resp)
+            resp.raise_for_status()  # Raise an exception for error HTTP statuses
+
+            peer_list = self.handle_response(resp)
             if "event" in params and params["event"] == "started":
                 self.announced_torrents.add(
                     params["info_hash"]
                 )  # Track announced torrents
-        except Exception as e:
-            print("[ERROR-TrackerCommunicator-_send_announce_request] ", e)
+            return peer_list
+
+        except requests.exceptions.RequestException as e:
+            print(
+                f"[ERROR-TrackerCommunicator-_send_announce_request] Request failed: {e}"
+            )
+            raise  # Re-raise the exception to propagate the error
 
     # def download_announce(self, torrent_file: Torrent):
     #     """Announce to server by GET request with the initial params, receive response from the tracker

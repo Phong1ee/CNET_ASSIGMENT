@@ -12,6 +12,8 @@ from UploadManager import UploadManager
 class UserInterface:
     def __init__(
         self,
+        ip: str,
+        port: int,
         torrent_dir: str,
         dest_dir: str,
         downloadManager: DownloadManager,
@@ -29,6 +31,8 @@ class UserInterface:
             trackerCommunicator (TrackerCommunicator.TrackerCommunicator): TrackerCommunicator object
             fileManager (FileManager.FileManager): FileManager object
         """
+        self.ip = ip
+        self.port = port
         self.torrent_dir = torrent_dir
         self.dest_dir = dest_dir
         self.downloadManager = downloadManager
@@ -61,7 +65,7 @@ class UserInterface:
                     sleep(1)
 
     def menu(self):
-        print("Welcome to our Simple BitTorrent client!")
+        print(f"Welcome to our Simple BitTorrent client! You are {self.ip}:{self.port}")
         print("--------------------------------------------")
         print("You are Online!, other peers may connect to you")
         print("[1] Download a Torrent")
@@ -92,11 +96,14 @@ class UserInterface:
 
         # Send GET request to the tracker and get the peer list
         peer_list = self.trackerCommunicator.download_announce(torrent)
+        print("Peer list: ", peer_list)
         if peer_list is None:
+            print("No peers found. Download failed.")
             input("Enter to return...")
             return
 
         # Start the download process
+        print("Download started for infohash: ", torrent.infohash)
         self.downloadManager.new_download(
             torrent,
             peer_list,
@@ -123,9 +130,11 @@ class UserInterface:
 
         # Create the tracking variable in UploadManager
         self.uploadManager.new_upload(torrent)
+        print("Upload started for infohash: ", torrent.infohash)
 
         # Announce the completed event to the tracker
         self.trackerCommunicator.upload_announce(torrent)
+        print("Announced to tracker.")
 
         # print("--------------------------------------------")
         input("Enter to return...")
@@ -182,5 +191,6 @@ class UserInterface:
 
     def exit(self):
         print("Exiting...")
+        self.uploadManager.stop()
         self.trackerCommunicator.stopping_announce()
         exit()
