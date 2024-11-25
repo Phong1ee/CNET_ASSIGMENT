@@ -172,11 +172,16 @@ class UserInterface:
             torrent: The Torrent object.
         """
         while True:
-            torrent_name = input(
-                "Enter the path to the torrent file ('cancel' to return): "
-            )
-            if torrent_name == "cancel":
+            torrent_list = self.fileManager.list_torrents()
+            print("Choose one of the availabe torrents:")
+            print("--------------------------------------------")
+            for i, torrent in enumerate(torrent_list):
+                print(f"[{i}] {torrent}")
+            print("--------------------------------------------")
+            option = input("Enter the index or 'cancel' to return: ")
+            if option == "cancel":
                 return
+            torrent_name = torrent_list[int(option)]
             torrent_file = self.torrent_dir + torrent_name
             if not os.path.exists(torrent_file):
                 print("File not found. Please try again.")

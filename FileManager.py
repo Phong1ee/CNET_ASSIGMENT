@@ -1,41 +1,34 @@
-import torf
 import os
 from torf import Torrent
 
 
 class FileManager:
     def __init__(self, torrent_dir: str, destination_dir: str):
-        """Initialize the FileManager object.
-
-        Args:
-            torrent_path (str): Path to the folder storing the torrents
-            destination_path (str): Path to the destination folder
-        """
         self.torrent_dir = torrent_dir
         self.destination_dir = destination_dir
 
-    def write_single_file(self, destination_file_path, data, piece_size):
-        """Writes a single file from a dictionary of piece data.
-
-        Args:
-            destination_file_path (str): The path to the destination file.
-            data (dict[int, bytes]): A dictionary where keys are piece indices and values are piece data.
-            piece_size (int): The size of each piece, except possibly the last one.
-        """
-
+    def write_single_file(self, destination_file_path, data):
         with open(destination_file_path, "wb") as f:
-            for piece_index, piece_data in sorted(data.items()):
+            for _, piece_data in sorted(data.items()):
                 f.write(piece_data)
 
+    def write_multi_file(self, dest_dir, data, file_infos):
+        offset = 0
+        concat_data = b""
+        for _, piece_data in sorted(data.items()):
+            concat_data += piece_data
+        for file_info in file_infos:
+            size = file_info.size
+            write_path = dest_dir + str(file_info.parent) + "/" + str(file_info.name)
+            with open(write_path, "wb") as f:
+                data = concat_data[offset : offset + size]
+                print(
+                    f"writing to {write_path} with size {size} and length {len(data)}"
+                )
+                f.write(data)
+            offset += size
+
     def check_local_torrent(self, infohash: str):
-        """Check if the torrent file exists locally.
-
-        Args:
-            infohash (str): The infohash of the torrent.
-
-        Returns:
-            True if the torrent file exists, False otherwise.
-        """
         files = self.list_torrents()
         for file in files:
             if Torrent.read(self.torrent_dir + file).infohash == infohash:
@@ -43,14 +36,6 @@ class FileManager:
         return False
 
     def get_torrent_file_path(self, infohash: str):
-        """Get the file path of the torrent file.
-
-        Args:
-            infohash (str): The infohash of the torrent.
-
-        Returns:
-            The file path of the torrent file.
-        """
         files = self.list_torrents()
         for file in files:
             if Torrent.read(self.torrent_dir + file).infohash == infohash:
@@ -58,66 +43,34 @@ class FileManager:
                 return self.torrent_dir + file
 
     def get_original_file_path(self, infohash: str):
-        """Get the original file path of the torrent file.
-
-        Args:
-            infohash (str): The infohash of the torrent.
-
-        Returns:
-            The original file path of the torrent file.
-        """
         files = self.list_torrents()
         for file in files:
             if Torrent.read(self.torrent_dir + file).infohash == infohash:
                 return self.destination_dir + Torrent.read(self.torrent_dir + file).name
 
     def list_torrents(self):
-        """Lists all torrents in the torrent directory.
-        Returns:
-            A list of torrent files in self.torrent_dir.
-        """
         files = [f for f in os.listdir(self.torrent_dir) if f.endswith(".torrent")]
         return files
 
-    def build_file_tree(self, torrent_info):
-        """Builds a file tree based on the torrent information.
+    def create_file_tree(self, torrent: Torrent):
+        self._process_file_tree(torrent.filetree, self.destination_dir)
 
-        Args:
-            torrent_info: The torrent information object.
+    def _process_file_tree(self, tree, base_path):
+        for item, value in tree.items():
+            if isinstance(value, dict):  # Directory
+                dir_path = os.path.join(base_path, item)
+                self._create_directory(dir_path)
+                self._process_file_tree(value, dir_path)
+            else:  # File
+                file_path = os.path.join(base_path, item)
+                self._create_file(file_path)
 
-        Returns:
-            A nested dictionary representing the file tree.
-        """
-        # ... (Implement logic to construct the file tree)
+    def _create_directory(self, path):
+        try:
+            os.makedirs(path)
+        except FileExistsError:
+            pass
 
-    def write_piece_to_file(self, piece_index, piece_data):
-        """Writes a piece of data to the appropriate file.
-
-        Args:
-            piece_index: The index of the piece.
-            piece_data: The piece data.
-        """
-        # ... (Implement logic to determine the file and offset, write the data)
-
-    def verify_file_integrity(self, file_path, piece_hashes):
-        """Verifies the integrity of a file.
-
-        Args:
-            file_path: The path to the file.
-            piece_hashes: A list of piece hashes.
-
-        Returns:
-            True if the file is valid, False otherwise.
-        """
-        # ... (Implement logic to read the file in chunks, calculate hashes, and compare)
-
-    def delete_incomplete_files(self):
-        """Deletes any incomplete files in the destination directory."""
-        # ... (Implement logic to identify and delete incomplete files)
-
-    def resume_download(self):
-        """Resumes a previously interrupted download.
-
-        This involves checking the existing files, calculating the missing pieces, and updating the bitfield.
-        """
-        # ... (Implement logic to check file integrity, update bitfield, and resume download)
+    def _create_file(self, path):
+        with open(path, "w"):
+            pass

@@ -5,6 +5,7 @@ from UserInterface import UserInterface
 from TrackerCommunicator import TrackerCommunicator
 import utils
 import argparse
+from threading import Thread
 
 
 def main(host: str, port: int):
@@ -16,6 +17,8 @@ def main(host: str, port: int):
 
     # Initialize the upload manager
     uploadManager = UploadManager(id, host, port, torrent_dir, fileManager)
+    server_thread = Thread(target=uploadManager.run_server, daemon=True)
+    server_thread.start()
 
     # Initialize the tracker communicator
     trackerCommunicator = TrackerCommunicator(
@@ -56,7 +59,7 @@ if __name__ == "__main__":
 
     id = utils.get_id()
     host = utils.get_ip()
-    port = 6882
+    port = 6881
     torrent_dir = "./torrents/"
     dest_dir = "./download_path/"
 

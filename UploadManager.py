@@ -42,29 +42,8 @@ class UploadManager:
         """Stop the upload manager."""
         self.stopping_event.set()
 
-    def new_upload(self, torrent: Torrent):
-        """Upload a torrent to the tracker.
-        Args:
-            torrent (Torrent): The torrent object to upload.
-        """
-        with self.lock:
-            infohash = torrent.infohash
-            self.active_uploads[infohash] = {
-                "peer_list": [],
-                "torrent": torrent,
-                "upload_rate": 0,
-                "uploaded_total": 0,
-                "num_connected_peers": 0,
-                "upload_thread": Thread(target=self._upload, args=(infohash,)),
-            }
-            self.active_uploads[infohash]["upload_thread"].start()
-            print(f"Started uploading {infohash}")
-
-    def _upload(self, infohash: str):
-        """Start listening for incoming peer connections and spawn a new thread _upload_piece_thread for each connection.
-        Args:
-            infohash (str): The infohash of the torrent.
-        """
+    def run_server(self):
+        """Act as a server, listening for connections from peers."""
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind((self.ip, self.port))
 
@@ -75,64 +54,71 @@ class UploadManager:
                 client_socket, _ = server_socket.accept()
                 Thread(
                     target=self._upload_piece_thread,
-                    args=(infohash, client_socket),
+                    args=(client_socket,),
                 ).start()
             except KeyboardInterrupt:
                 break
 
+        server_socket.close()
+
+    def new_upload(self, torrent: Torrent):
+        """Upload a torrent to the tracker.
+        Args:
+            torrent (Torrent): The torrent object to upload.
+        """
+        with self.lock:
+            infohash = torrent.infohash
+            self.active_uploads[infohash] = {
+                "torrent": torrent,
+                "upload_rate": 0,
+                "uploaded_total": 0,
+                "num_connected_peers": 0,
+            }
+
     def _upload_piece_thread(
         self,
-        infohash: str,
         client_socket: socket.socket,
     ):
         peer_communicator = PeerCommunicator(client_socket)
 
         # Receive handshake from the peer
         handshake = peer_communicator.receive_handshake()
-        requested_infohash = handshake[28:48].hex()
-        # print(
-        #     "[INFO-UploadManager-_upload_piece_thread] Requested infohash:",
-        #     requested_infohash,
-        # )
+        infohash = handshake[28:48].hex()
+        peer_id = handshake[48:].decode("utf-8")
+
+        # Validate handshake
+        val = peer_communicator.validate_handshake(handshake, infohash, peer_id)
+        if not val:
+            print("[INFO-UploadManager-_upload_piece_thread] Handshake failed")
+            client_socket.close()
+            return None
 
         # Check if local torrent folder has the requested infohash
-        torrent_exist = self.fileManager.check_local_torrent(requested_infohash)
+        torrent_exist = self.fileManager.check_local_torrent(infohash)
         if not torrent_exist:
             print("[INFO-UploadManager-_upload_piece_thread] Torrent does not exist")
             client_socket.close()
             return None
 
-        # Get the torrent file path
-        file_path = self.fileManager.get_original_file_path(requested_infohash)
-        # print("INFO-UploadManager-_upload_piece_thread] File path:", file_path)
         with self.lock:
             torrent = self.active_uploads[infohash]["torrent"]
-        pieceManager = PieceManager(torrent, file_path)
+        pieceManager = PieceManager(torrent, self.fileManager.destination_dir)
 
-        # Send handshake to the peer
+        # Communicate with the peer
         peer_communicator.send_handshake(self.id, infohash)
-
-        # Send unchoke message to the peer
         peer_communicator.send_unchoke()
-
-        # Receive interested message from the peer
         peer_communicator.receive_interested()
-
-        # Get the bitfield of the torrent
-        bitfield = pieceManager.bitfield
-        # print("[INFO-UploadManager-_upload_piece_thread] Bitfield:", bitfield)
-
-        # Send bitfield message to the peer
-        peer_communicator.send_bitfield(bitfield)
-
-        # Receive request message from the peer
+        peer_communicator.send_bitfield(pieceManager.generate_bitfield())
         piece_idx = peer_communicator.receive_request()
-
-        # Get the piece data
         piece_data = pieceManager.get_piece_data(piece_idx)
-
-        # Send piece message to the peer
         peer_communicator.send_piece(piece_idx, piece_data)
+
+        # Update the total uploaded size
+        with self.lock:
+            self.active_uploads[infohash]["uploaded_total"] += len(piece_data)
+
+        client_socket.close()
+        return
 
     def get_total_uploaded(self):
         """Get the total uploaded size.
