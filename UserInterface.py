@@ -156,8 +156,6 @@ class UserInterface:
             print(
                 f"{'File Name':<20}{'Progress':<30}{'Speed':<15}{'Peers':<10}{'Connected':<10}"
             )
-            # print(download_info)
-
             for info in download_info:
                 print(
                     f"{info['file_name']:<20}{info['progress']:<30}{info['rate']:<15}{info['peers']:<10}{info['connected_peers']:<10}"
@@ -166,7 +164,7 @@ class UserInterface:
             print("--------------------------------------------")
             print("Press 'q' to return.")
 
-            time.sleep(0.05)
+            time.sleep(0.1)
 
             if self._input_quit():
                 break
@@ -242,10 +240,9 @@ class UserInterface:
         # print("num connected peers", num_connected_peers)
 
         # Calculate download rates and format them appropriately
-        print("rates:")
         download_rates = []
         for i, progress in enumerate(progresses):
-            rate = (progress - last_it_progresses[i]) * 20
+            rate = (progress - last_it_progresses[i]) * 10
             download_rates.append(self._format_rate(rate))
 
         # Update the last iteration's values

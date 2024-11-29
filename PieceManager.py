@@ -73,6 +73,8 @@ class PieceManager:
 
     def verify_piece(self, piece_data, piece_idx):
         calculated_hash = hashlib.sha1(piece_data).digest()
+        print(f"Calculated hash: {calculated_hash}")
+        print(f"Expected hash: {self.hashes[piece_idx]}")
         with self.lock:
             expected_hash = self.hashes[piece_idx]
         return calculated_hash == expected_hash
