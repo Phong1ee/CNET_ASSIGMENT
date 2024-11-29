@@ -80,7 +80,7 @@ class TrackerCommunicator:
         if peers:
             return peers
         else:
-            print("[Handle Response] No peers found in the response.")
+            # print("[Handle Response] No peers found in the response.")
             return None
 
     def _prepare_announce_request(
@@ -128,6 +128,7 @@ class TrackerCommunicator:
             "peer_id": self.id,
             "ip": self.host,
             "port": self.port,
+            "left": 0,
             "event": "stopped",
         }
         return params

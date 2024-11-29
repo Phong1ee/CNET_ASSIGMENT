@@ -22,9 +22,9 @@ class FileManager:
             write_path = dest_dir + str(file_info.parent) + "/" + str(file_info.name)
             with open(write_path, "wb") as f:
                 data = concat_data[offset : offset + size]
-                print(
-                    f"writing to {write_path} with size {size} and length {len(data)}"
-                )
+                # print(
+                #     f"writing to {write_path} with size {size} and length {len(data)}"
+                # )
                 f.write(data)
             offset += size
 
@@ -55,7 +55,8 @@ class FileManager:
     def create_file_tree(self, torrent: Torrent, path=None):
         if path is None:
             path = self.destination_dir
-        self._process_file_tree(torrent.filetree, self.destination_dir)
+        self._process_file_tree(torrent.filetree, path)
+        # print("[INFO-FileManager-create_file_tree] File tree created at", path)
 
     def _process_file_tree(self, tree, base_path):
         for item, value in tree.items():

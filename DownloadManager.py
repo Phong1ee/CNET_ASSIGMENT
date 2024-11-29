@@ -53,7 +53,7 @@ class DownloadManager:
             piece_index_queue.put(piece_idx)
 
         # Assign pieces to peers
-        print("[INFO-DownloadManager-_download] Assigning pieces to peers")
+        # print("[INFO-DownloadManager-_download] Assigning pieces to peers")
         peer_idx = 0
         threads = []
         while not piece_index_queue.empty():
@@ -64,6 +64,7 @@ class DownloadManager:
             socket = self._connect_peer(infohash, peer_list[peer_idx])
             if socket is not None:
                 peer_id = peer_list[peer_idx]["peer_id"]
+                download_info["num_connected_peers"] += 1
                 thread = Thread(
                     target=self._download_piece_thread,
                     args=(pieceManager, piece_idx, infohash, socket, peer_id),
@@ -71,9 +72,9 @@ class DownloadManager:
                 threads.append(thread)
 
             else:  # Put the index back to the queue
-                print(
-                    "[INFO-DownloadManager-_download] Peer connection failed, putting piece back to queue"
-                )
+                # print(
+                #     "[INFO-DownloadManager-_download] Peer connection failed, putting piece back to queue"
+                # )
                 piece_index_queue.put(piece_idx)
 
             peer_idx = (peer_idx + 1) % len(download_info["peer_list"])
@@ -81,39 +82,43 @@ class DownloadManager:
         # Start all threads
         for thread in threads:
             thread.start()
-        print("[INFO-DownloadManager-_download] All threads started")
+        # print("[INFO-DownloadManager-_download] All threads started")
 
         # Wait for all threads to finish
         for thread in threads:
             thread.join()
-        print("[INFO-DownloadManager-_download] Download complete")
+        # print("[INFO-DownloadManager-_download] Download complete")
         piece_data: dict[int, bytes] = pieceManager.get_all_piece_data()
 
         # Create file tree
         self.fileManager.create_file_tree(download_info["torrent"], "./download_test/")
+        # print(
+        #     "[INFO-DownloadManager-_download] File tree created at", "./download_test/"
+        # )
 
         # Write the downloaded data to the destination file
         if download_info["torrent"].mode == "singlefile":
             dest_path = f"./download_test/{download_info['torrent'].name}"
-            print(
-                "[INFO-DownloadManager-_download] Writing single file to destination path:",
-                dest_path,
-            )
+            # print(
+            #     "[INFO-DownloadManager-_download] Writing single file to destination path:",
+            #     dest_path,
+            # )
             self.fileManager.write_single_file(
                 dest_path,
                 piece_data,
             )
         else:
-            print(
-                "[INFO-DownloadManager-_download] Writing multi file to destination path",
-            )
+            # print(
+            #     "[INFO-DownloadManager-_download] Writing multi file to destination path",
+            # )
             self.fileManager.write_multi_file(
-                "./donwload_test/()_+o", piece_data, download_info["torrent"].files
+                "./download_test/", piece_data, download_info["torrent"].files
             )
-        print("[INFO-DownloadManager-_download] File written successfully")
+        # print("[INFO-DownloadManager-_download] File written successfully")
         # remove from active downloads
         with self.lock:
             del self.active_downloads[infohash]
+            # print("[INFO-DownloadManager-_download] Removed from active downloads")
 
     def _download_piece_thread(
         self,
@@ -142,31 +147,36 @@ class DownloadManager:
                 peerCommunicator.send_request(piece_index)
                 received_idx, piece_data = peerCommunicator.receive_piece()
                 if received_idx != piece_index:
-                    print(
-                        f"[ERROR-DownloadManager-_download_piece_thread] Received piece {received_idx} does not match requested piece {piece_index}"
-                    )
+                    # print(
+                    #     f"[ERROR-DownloadManager-_download_piece_thread] Received piece {received_idx} does not match requested piece {piece_index}"
+                    # )
                     return
                 if pieceManager.verify_piece(piece_data, piece_index):
                     pieceManager.add_downloaded_piece(piece_data, piece_index)
-                    print(
-                        f"[INFO-DownloadManager-_download_piece_thread] Piece {piece_index} downloaded successfully"
-                    )
+                    with self.lock:
+                        self.active_downloads[infohash]["downloaded_total"] += len(
+                            piece_data
+                        )
+                        self.active_downloads[infohash]["num_connected_peers"] -= 1
+                    # print(
+                    #     f"[INFO-DownloadManager-_download_piece_thread] Piece {piece_index} downloaded successfully"
+                    # )
                     return
 
                 else:
-                    print(
-                        f"[ERROR-DownloadManager-_download_piece_thread] Piece {piece_index} hash verification failed"
-                    )
+                    # print(
+                    #     f"[ERROR-DownloadManager-_download_piece_thread] Piece {piece_index} hash verification failed"
+                    # )
                     return
             else:
-                print(
-                    f"[INFO-DownloadManager-_download_piece_thread] Peer {peer_id} does not have piece {piece_index}"
-                )
+                # print(
+                #     f"[INFO-DownloadManager-_download_piece_thread] Peer {peer_id} does not have piece {piece_index}"
+                # )
                 return
         else:
-            print(
-                f"[ERROR-DownloadManager-_download_piece_thread] Handshake failed with peer {peer_id}"
-            )
+            # print(
+            #     f"[ERROR-DownloadManager-_download_piece_thread] Handshake failed with peer {peer_id}"
+            # )
             return
 
     def _connect_peer(
@@ -212,7 +222,7 @@ class DownloadManager:
         total = []
         with self.lock:
             for download_info in self.active_downloads.values():
-                total.append(download_info["torrent"].length)
+                total.append(download_info["torrent"].size)
         return total
 
     def get_num_peers(self):
@@ -235,6 +245,9 @@ class DownloadManager:
         """Returns the number of downloading files."""
         return len(self.active_downloads)
 
-    def get_file_name(self):
-        """Returns the file name."""
-        pass
+    def get_file_names(self):
+        file_names = []
+        with self.lock:
+            for download_info in self.active_downloads.values():
+                file_names.append(download_info["torrent"].name)
+        return file_names

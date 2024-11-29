@@ -99,9 +99,9 @@ class UserInterface:
 
         # Send GET request to the tracker and get the peer list
         peer_list = self.trackerCommunicator.download_announce(torrent)
-        print("Peer list: ", peer_list)
+        # print("Peer list: ", peer_list)
         if peer_list is None:
-            print("No peers found. Download failed.")
+            print("No peers found.")
             input("Enter to return...")
             return
 
@@ -119,8 +119,6 @@ class UserInterface:
         # Input the .torrent file
         torrent = self._input_torrent()
         if torrent is None:
-            print("torrent is none")
-            input("Enter to return...")
             return
 
         # Display the file information
@@ -144,21 +142,6 @@ class UserInterface:
         # print("--------------------------------------------")
         input("Enter to return...")
 
-    # def show_downloading(self):
-    #     num_downloading = self.downloadManager.get_num_downloading()
-    #
-    #     print("--------------------------------------------")
-    #     print("Currently downloading: ", num_downloading)
-    #     print("--------------------------------------------")
-    #     print("File name \t Speed \t Connected")
-    #
-    #     download_info = self.downloadManager.send_info_to_ui()
-    #
-    #     # Display the download information
-    #
-    #     print("--------------------------------------------")
-    #     input("Enter to return...")
-
     def show_downloading(self):
         last_it_progresses = [0] * len(self.downloadManager.get_downloaded())
         last_it_totals = [0] * len(self.downloadManager.get_total())
@@ -173,6 +156,7 @@ class UserInterface:
             print(
                 f"{'File Name':<20}{'Progress':<30}{'Speed':<15}{'Peers':<10}{'Connected':<10}"
             )
+            # print(download_info)
 
             for info in download_info:
                 print(
@@ -182,7 +166,7 @@ class UserInterface:
             print("--------------------------------------------")
             print("Press 'q' to return.")
 
-            time.sleep(0.5)
+            time.sleep(0.05)
 
             if self._input_quit():
                 break
@@ -214,7 +198,7 @@ class UserInterface:
             option = input("Enter the index or 'q' to return: ")
             try:
                 if option == "q":
-                    return
+                    break
                 if int(option) < 0 or int(option) > (len(torrent_list) - 1):
                     raise ValueError
                 torrent_name = torrent_list[int(option)]
@@ -246,15 +230,22 @@ class UserInterface:
             list[dict]: A list of dictionaries containing download information.
         """
         # Get the current state of downloads
+        file_names = self.downloadManager.get_file_names()
         progresses = self.downloadManager.get_downloaded()
         totals = self.downloadManager.get_total()
         num_peers = self.downloadManager.get_num_peers()
         num_connected_peers = self.downloadManager.get_num_connected_peers()
+        # Print all the above information
+        # print("progresses:", progresses)
+        # print("totals", totals)
+        # print("num peers", num_peers)
+        # print("num connected peers", num_connected_peers)
 
         # Calculate download rates and format them appropriately
+        print("rates:")
         download_rates = []
         for i, progress in enumerate(progresses):
-            rate = (progress - last_it_progresses[i]) * 2
+            rate = (progress - last_it_progresses[i]) * 20
             download_rates.append(self._format_rate(rate))
 
         # Update the last iteration's values
@@ -263,8 +254,8 @@ class UserInterface:
 
         info = [
             {
-                "file_name": self.downloadManager.get_file_name(),  # Retrieve file name
-                "progress": f"{self._format_rate(progress)} / {self._format_rate(total)}",
+                "file_name": file_names[i],
+                "progress": f"{self._format_size(progress)} / {self._format_size(total)}",
                 "rate": download_rates[i],
                 "peers": num_peers[i],
                 "connected_peers": num_connected_peers[i],
@@ -273,6 +264,23 @@ class UserInterface:
         ]
 
         return info
+
+    def _format_size(self, size):
+        """
+        Convert file size (bytes) into a human-readable format.
+
+        Args:
+            size (int): File size in bytes.
+
+        Returns:
+            str: Human-readable format (e.g., "512.00 KB", "1.23 MB").
+        """
+        if size >= 1_000_000:
+            return f"{size / 1_000_000:.2f} MB"
+        elif size >= 1_000:
+            return f"{size / 1_000:.2f} KB"
+        else:
+            return f"{size} B"
 
     def _format_rate(self, rate):
         """
@@ -284,11 +292,11 @@ class UserInterface:
         Returns:
             str: Human-readable format (e.g., "512.00 KB/s", "1.23 MB/s").
         """
-        if rate >= 1_000_000:  # Greater than or equal to 1 MB/s
+        if rate >= 1_000_000:
             return f"{rate / 1_000_000:.2f} MB/s"
-        elif rate >= 1_000:  # Greater than or equal to 1 KB/s
+        elif rate >= 1_000:
             return f"{rate / 1_000:.2f} KB/s"
-        else:  # Less than 1 KB/s
+        else:
             return f"{rate} B/s"
 
     def _input_quit(self):

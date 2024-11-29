@@ -56,7 +56,7 @@ class PieceManager:
                 )
 
             with open(file_path, "rb") as f:
-                print("_concat_data is reading a file")
+                # print("_concat_data is reading a file")
                 data += f.read()
         return data
 

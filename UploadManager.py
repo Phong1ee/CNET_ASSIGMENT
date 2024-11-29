@@ -107,6 +107,7 @@ class UploadManager:
         peer_communicator.send_bitfield(pieceManager.generate_bitfield())
         piece_idx = peer_communicator.receive_request()
         piece_data = pieceManager.get_piece_data(piece_idx)
+        # print("[INFO-UploadManager-_upload_piece_thread] Sending piece", piece_idx)
         peer_communicator.send_piece(piece_idx, piece_data)
 
         # Update the total uploaded size
