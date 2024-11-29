@@ -1,4 +1,7 @@
 import os
+import msvcrt
+import time
+import sys
 from time import sleep
 
 from torf import Torrent
@@ -42,21 +45,21 @@ class UserInterface:
 
     def run(self):
         while True:
-            self.clear()
+            self._clear()
             option = self.menu()
 
             match option:
                 case "1":
-                    self.clear()
+                    self._clear()
                     self.new_download()
                 case "2":
-                    self.clear()
+                    self._clear()
                     self.new_upload()
                 case "3":
-                    self.clear()
+                    self._clear()
                     self.show_downloading()
                 case "4":
-                    self.clear()
+                    self._clear()
                     self.show_uploading()
                 case "5":
                     self.exit()
@@ -66,8 +69,8 @@ class UserInterface:
 
     def menu(self):
         print(f"Welcome to our Simple BitTorrent client! You are {self.ip}:{self.port}")
-        print("--------------------------------------------")
         print("You are Online!, other peers may connect to you")
+        print("--------------------------------------------")
         print("[1] Download a Torrent")
         print("[2] Upload a Torrent")
         print("[3] View downloading files")
@@ -116,7 +119,9 @@ class UserInterface:
         # Input the .torrent file
         torrent = self._input_torrent()
         if torrent is None:
-            return 1
+            print("torrent is none")
+            input("Enter to return...")
+            return
 
         # Display the file information
         print("--------------------------------------------")
@@ -139,20 +144,48 @@ class UserInterface:
         # print("--------------------------------------------")
         input("Enter to return...")
 
+    # def show_downloading(self):
+    #     num_downloading = self.downloadManager.get_num_downloading()
+    #
+    #     print("--------------------------------------------")
+    #     print("Currently downloading: ", num_downloading)
+    #     print("--------------------------------------------")
+    #     print("File name \t Speed \t Connected")
+    #
+    #     download_info = self.downloadManager.send_info_to_ui()
+    #
+    #     # Display the download information
+    #
+    #     print("--------------------------------------------")
+    #     input("Enter to return...")
+
     def show_downloading(self):
-        num_downloading = self.downloadManager.get_num_downloading()
+        last_it_progresses = [0] * len(self.downloadManager.get_downloaded())
+        last_it_totals = [0] * len(self.downloadManager.get_total())
 
-        print("--------------------------------------------")
-        print("Currently downloading: ", num_downloading)
-        print("--------------------------------------------")
-        print("File name \t Speed \t Connected")
+        while True:
+            self._clear()
+            download_info = self._get_download_info(last_it_progresses, last_it_totals)
 
-        download_info = self.downloadManager.send_info_to_ui()
+            print("--------------------------------------------")
+            print(f"Currently downloading: {len(download_info)}")
+            print("--------------------------------------------")
+            print(
+                f"{'File Name':<20}{'Progress':<30}{'Speed':<15}{'Peers':<10}{'Connected':<10}"
+            )
 
-        # Display the download information
+            for info in download_info:
+                print(
+                    f"{info['file_name']:<20}{info['progress']:<30}{info['rate']:<15}{info['peers']:<10}{info['connected_peers']:<10}"
+                )
 
-        print("--------------------------------------------")
-        input("Enter to return...")
+            print("--------------------------------------------")
+            print("Press 'q' to return.")
+
+            time.sleep(0.5)
+
+            if self._input_quit():
+                break
 
     def show_uploading(self):
         uploading = self.uploadManager.get_num_uploading()
@@ -178,20 +211,111 @@ class UserInterface:
             for i, torrent in enumerate(torrent_list):
                 print(f"[{i}] {torrent}")
             print("--------------------------------------------")
-            option = input("Enter the index or 'cancel' to return: ")
-            if option == "cancel":
-                return
-            torrent_name = torrent_list[int(option)]
-            torrent_file = self.torrent_dir + torrent_name
-            if not os.path.exists(torrent_file):
-                print("File not found. Please try again.")
-            else:
-                break
-        torrent = Torrent.read(torrent_file)
+            option = input("Enter the index or 'q' to return: ")
+            try:
+                if option == "q":
+                    return
+                if int(option) < 0 or int(option) > (len(torrent_list) - 1):
+                    raise ValueError
+                torrent_name = torrent_list[int(option)]
+                torrent_file = self.torrent_dir + torrent_name
+                if not os.path.exists(torrent_file):
+                    print("File not found. Please try again.")
+                    input("Enter to continue...")
+                torrent = Torrent.read(torrent_file)
 
-        return torrent
+                return torrent
 
-    def clear(self):
+            except ValueError:
+                print(
+                    f"Invalid option. Please ony input 0->{len(torrent_list)-1} or 'q'"
+                )
+                input("Enter to continue...")
+                self._clear()
+                continue
+
+    def _get_download_info(self, last_it_progresses, last_it_totals):
+        """
+        Fetch download information for all active downloads.
+
+        Args:
+            last_it_progresses (list[int]): The previously recorded downloaded bytes for each file.
+            last_it_totals (list[int]): The previously recorded total bytes for each file.
+
+        Returns:
+            list[dict]: A list of dictionaries containing download information.
+        """
+        # Get the current state of downloads
+        progresses = self.downloadManager.get_downloaded()
+        totals = self.downloadManager.get_total()
+        num_peers = self.downloadManager.get_num_peers()
+        num_connected_peers = self.downloadManager.get_num_connected_peers()
+
+        # Calculate download rates and format them appropriately
+        download_rates = []
+        for i, progress in enumerate(progresses):
+            rate = (progress - last_it_progresses[i]) * 2
+            download_rates.append(self._format_rate(rate))
+
+        # Update the last iteration's values
+        last_it_progresses[:] = progresses[:]
+        last_it_totals[:] = totals[:]
+
+        info = [
+            {
+                "file_name": self.downloadManager.get_file_name(),  # Retrieve file name
+                "progress": f"{self._format_rate(progress)} / {self._format_rate(total)}",
+                "rate": download_rates[i],
+                "peers": num_peers[i],
+                "connected_peers": num_connected_peers[i],
+            }
+            for i, (progress, total) in enumerate(zip(progresses, totals))
+        ]
+
+        return info
+
+    def _format_rate(self, rate):
+        """
+        Convert download rate (bytes/s) into a human-readable format.
+
+        Args:
+            rate (int): Download speed in bytes per second.
+
+        Returns:
+            str: Human-readable format (e.g., "512.00 KB/s", "1.23 MB/s").
+        """
+        if rate >= 1_000_000:  # Greater than or equal to 1 MB/s
+            return f"{rate / 1_000_000:.2f} MB/s"
+        elif rate >= 1_000:  # Greater than or equal to 1 KB/s
+            return f"{rate / 1_000:.2f} KB/s"
+        else:  # Less than 1 KB/s
+            return f"{rate} B/s"
+
+    def _input_quit(self):
+        """
+        Check for user input to quit the process without blocking.
+
+        Returns:
+            bool: True if the user wants to quit, False otherwise.
+        """
+        # Check for Windows
+        if sys.platform == "win32":
+            if msvcrt.kbhit():  # Check if a key was pressed
+                key = msvcrt.getch()  # Read the key
+                if key == b"q":  # Check if it matches 'q'
+                    return True
+            return False
+        else:
+            import select
+
+            i, o, e = select.select([sys.stdin], [], [], 0)
+            if i:
+                key = sys.stdin.read(1)  # Read one character
+                if key.lower() == "q":  # Check if it matches 'q'
+                    return True
+            return False
+
+    def _clear(self):
         os.system("cls" if os.name == "nt" else "clear")
 
     def exit(self):

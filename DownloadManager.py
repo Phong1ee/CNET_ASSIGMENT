@@ -90,7 +90,7 @@ class DownloadManager:
         piece_data: dict[int, bytes] = pieceManager.get_all_piece_data()
 
         # Create file tree
-        self.fileManager.create_file_tree(download_info["torrent"])
+        self.fileManager.create_file_tree(download_info["torrent"], "./download_test/")
 
         # Write the downloaded data to the destination file
         if download_info["torrent"].mode == "singlefile":
@@ -108,9 +108,12 @@ class DownloadManager:
                 "[INFO-DownloadManager-_download] Writing multi file to destination path",
             )
             self.fileManager.write_multi_file(
-                self.dest_dir, piece_data, download_info["torrent"].files
+                "./donwload_test/()_+o", piece_data, download_info["torrent"].files
             )
         print("[INFO-DownloadManager-_download] File written successfully")
+        # remove from active downloads
+        with self.lock:
+            del self.active_downloads[infohash]
 
     def _download_piece_thread(
         self,
@@ -196,67 +199,42 @@ class DownloadManager:
             )
             return None
 
-    def get_total_downloaded(self):
-        """Returns the total downloaded size."""
-        total_downloaded = 0
+    def get_downloaded(self):
+        """Returns the total downloaded data."""
+        downloaded = []
         with self.lock:
             for download_info in self.active_downloads.values():
-                total_downloaded += download_info["downloaded_total"]
-        return total_downloaded
+                downloaded.append(download_info["downloaded_total"])
+        return downloaded
 
-    def get_total_downloaded_infohash(self, infohash: str):
-        """Returns the total downloaded size for the supplied infohash.
-        Args:
-            infohash (str): The infohash of the torrent.
-        Returns:
-            The total downloaded size
-        """
+    def get_total(self):
+        """Returns the total file size."""
+        total = []
         with self.lock:
-            return self.active_downloads[infohash]["downloaded_total"]
+            for download_info in self.active_downloads.values():
+                total.append(download_info["torrent"].length)
+        return total
 
-    def get_bytes_left(self, infohash: str):
-        """Get the number of bytes left to download for a specific torrent.
-        Args:
-            infohash (str): The infohash of the torrent.
-        Returns:
-            The number of bytes left to download.
-        """
+    def get_num_peers(self):
+        """Returns the number of peers."""
+        num_peers = []
         with self.lock:
-            return (
-                self.active_downloads[infohash]["torrent"].size
-                - self.active_downloads[infohash]["downloaded_total"]
-            )
+            for download_info in self.active_downloads.values():
+                num_peers.append(len(download_info["peer_list"]))
+        return num_peers
 
-    def get_download_rate(self):
-        """Calculates the current download rate."""
-        pass
-
-    def get_download_status(self, download_id):
-        pass
-
-    def get_remaining_size(self):
-        """Returns the remaining size to be downloaded."""
-        pass
-
-    def get_number_of_connected_peers(self):
+    def get_num_connected_peers(self):
         """Returns the number of connected peers."""
-        pass
+        num_connected_peers = []
+        with self.lock:
+            for download_info in self.active_downloads.values():
+                num_connected_peers.append(download_info["num_connected_peers"])
+        return num_connected_peers
 
     def get_num_downloading(self):
         """Returns the number of downloading files."""
         return len(self.active_downloads)
 
-    def get_file_size(self):
-        """Returns the total file size."""
-        pass
-
     def get_file_name(self):
         """Returns the file name."""
-        pass
-
-    def write_file(self):
-        """Writes the downloaded pieces to the destination file."""
-
-    def send_info_to_ui(self):
-        """Sends the information of the download process to UI"""
         pass

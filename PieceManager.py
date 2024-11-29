@@ -1,6 +1,5 @@
 import threading
 import hashlib
-import os
 from torf import Torrent
 
 
@@ -57,6 +56,7 @@ class PieceManager:
                 )
 
             with open(file_path, "rb") as f:
+                print("_concat_data is reading a file")
                 data += f.read()
         return data
 

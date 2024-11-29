@@ -33,6 +33,7 @@ class TrackerCommunicator:
 
     def upload_announce(self, torrent_file: Torrent):
         params = self._prepare_announce_request("completed", torrent_file)
+        self.announced_torrents.add(torrent_file.infohash)
         self._send_announce_request(params)
 
     def regular_announce(self):
@@ -105,8 +106,8 @@ class TrackerCommunicator:
             left = 0
         elif event == "started":
             left = torrent_file.size
-        else:
-            left = self.downloadManager.get_bytes_left(infohash)
+        else:  # TODO: Fix this, left should be the bytes left to download
+            left = 0
         params = {
             "info_hash": infohash,
             "peer_id": self.id,
@@ -115,12 +116,10 @@ class TrackerCommunicator:
             # "uploaded": self.uploadManager.get_total_uploaded_infohash(infohash),
             # "downloaded": self.downloadManager.get_total_downloaded_infohash(infohash),
             "left": left,
-            "compact": 1,
+            "compact": 0,
             "event": event,
             "numwant": 0,
         }
-        if event == "started":
-            params["left"] = torrent_file.size
         return params
 
     def _prepare_stopping_announce(self, infohash):
@@ -150,124 +149,3 @@ class TrackerCommunicator:
                 f"[ERROR-TrackerCommunicator-_send_announce_request] Request failed: {e}"
             )
             raise  # Re-raise the exception to propagate the error
-
-    # def download_announce(self, torrent_file: Torrent):
-    #     """Announce to server by GET request with the initial params, receive response from the tracker
-    #     Args:
-    #         torrent_file (str): Path to the torrent file
-    #     Returns:
-    #         peers (list): List of peers received from the tracker
-    #     """
-    #     params = self._prepare_download_request(torrent_file)
-    #     try:
-    #         resp = requests.get(url=self.url + "/announce", params=params)
-    #         print("[Download Announce] Response from tracker: ", resp.content)
-    #         peers = self.handle_response(resp)
-    #         return peers
-    #     except Exception as e:
-    #         print("[Download Announce Error] ", e)
-    #
-    # def upload_announce(self, torrent_file: Torrent):
-    #     """Announce to server that the client has completed the download
-    #     Args:
-    #         torrent_file (str): Path to the torrent file
-    #     Returns:
-    #         None
-    #     """
-    #     params = self._prepare_upload_request(torrent_file)
-    #     try:
-    #         resp = requests.get(url=self.url + "/announce", params=params)
-    #         print("[Upload Announce] Response from tracker: ", resp.content)
-    #     except Exception as e:
-    #         print("[Upload Announce Error] ", e)
-
-    # def regular_announce(self):
-    #     """Announce every self.announce_interval to the tracker"""
-    #     # TODO: fix this
-    #     while True:
-    #         # Announce to the tracker
-    #         self.announce_to_tracker()
-    #         # Sleep for the specified interval
-    #         time.sleep(self.announce_interval)
-
-    # def stopping_announce(self):
-    #     """Announce to tracker that this client is stopping"""
-    #     params = self._prepare_regular_announce(infohash, event="stopped")
-    #     try:
-    #         resp = requests.get(self.url, params=params)
-    #     # handle connection error or other errors here, let's hope there is not any
-    #     except Exception as e:
-    #         print("[Stopping Announce] ", e)
-    #     return 0
-
-    # def _prepare_download_request(
-    #     self, torrent_file: Torrent, compact: int = 0, numwant: int = 50
-    # ):
-    #     """Prepares a tracker request to download a torrent.
-    #     Args:
-    #         torrent_file (Torrent): The Torrent object
-    #         compact (int): Whether to use compact response
-    #         numwant (int): Number of peers to request
-    #     """
-    #     params = {
-    #         "info_hash": torrent_file.infohash,
-    #         "peer_id": self.id,
-    #         "ip": self.host,
-    #         "port": self.port,
-    #         "uploaded": 0,
-    #         "downloaded": 0,
-    #         "left": torrent_file.size,
-    #         "compact": compact,
-    #         "event": "started",
-    #         "numwant": numwant,
-    #     }
-    #     return params
-    #
-    # def _prepare_upload_request(self, torrent_file: Torrent):
-    #     """Prepares a tracker request to upload a torrent.
-    #     Args:
-    #         torrent_file (Torrent): The Torrent object
-    #     """
-    #     params = {
-    #         "info_hash": torrent_file.infohash,
-    #         "peer_id": self.id,
-    #         "ip": self.host,
-    #         "port": self.port,
-    #         "uploaded": 0,
-    #         "downloaded": 0,
-    #         "left": 0,
-    #         "event": "completed",
-    #     }
-    #     return params
-    #
-    # def _prepare_regular_announce(self, infohash, event=None):
-    #     """get the information from self.downloadManager and self.uploadManager to get the uploaded and downwloaded for the torrent"""
-    #     params = {
-    #         "info_hash": infohash,
-    #         "peer_id": self.id,
-    #         "ip": self.host,
-    #         "port": self.port,
-    #         "uploaded": self.uploadManager.get_total_uploaded_infohash(
-    #             infohash
-    #         ),  # Placeholder function, TODO
-    #         "downloaded": self.downloadManager.get_total_downloaded_infohash(
-    #             infohash
-    #         ),  # Placeholder function, TODO
-    #         "left": self.downloadManager.get_bytes_left(
-    #             infohash
-    #         ),  # Placeholder function, TODO
-    #         "compact": 1,
-    #         "event": event,
-    #         "numwant": 0,
-    #     }
-    #     return params
-    #
-    # def _prepare_stopping_announce(self):
-    #     """Prepare the parameters for the stopping announce request"""
-    #     params = {
-    #         "peer_id": self.id,
-    #         "ip": self.host,
-    #         "port": self.port,
-    #         "event": "stopped",
-    #     }
-    #     return params

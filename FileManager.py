@@ -52,7 +52,9 @@ class FileManager:
         files = [f for f in os.listdir(self.torrent_dir) if f.endswith(".torrent")]
         return files
 
-    def create_file_tree(self, torrent: Torrent):
+    def create_file_tree(self, torrent: Torrent, path=None):
+        if path is None:
+            path = self.destination_dir
         self._process_file_tree(torrent.filetree, self.destination_dir)
 
     def _process_file_tree(self, tree, base_path):

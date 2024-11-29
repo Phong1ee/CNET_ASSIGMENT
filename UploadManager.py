@@ -62,10 +62,6 @@ class UploadManager:
         server_socket.close()
 
     def new_upload(self, torrent: Torrent):
-        """Upload a torrent to the tracker.
-        Args:
-            torrent (Torrent): The torrent object to upload.
-        """
         with self.lock:
             infohash = torrent.infohash
             self.active_uploads[infohash] = {
