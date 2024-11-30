@@ -1,4 +1,3 @@
-import queue
 import socket
 import threading
 from threading import Thread
@@ -47,70 +46,82 @@ class DownloadManager:
         # Initialize the piece manager
         pieceManager = PieceManager(download_info["torrent"], self.dest_dir)
 
-        # Initialize piece index queue
-        piece_index_queue: queue.Queue[int] = queue.Queue()
-        for piece_idx in range(download_info["torrent"].pieces):
-            piece_index_queue.put(piece_idx)
-
-        # Assign pieces to peers
-        # print("[INFO-DownloadManager-_download] Assigning pieces to peers")
-        peer_idx = 0
-        threads = []
-        while not piece_index_queue.empty():
-            piece_idx = piece_index_queue.get()
-            # print("Queue empty:", piece_index_queue.empty())
-
-            # Connect to a peer
-            socket = self._connect_peer(infohash, peer_list[peer_idx])
+        # Connect to peers and get bitfields
+        conncected_peers = []
+        for peer in peer_list:
+            socket = self._connect_peer(infohash, peer)
             if socket is not None:
-                peer_id = peer_list[peer_idx]["peer_id"]
-                download_info["num_connected_peers"] += 1
-                thread = Thread(
-                    target=self._download_piece_thread,
-                    args=(pieceManager, piece_idx, infohash, socket, peer_id),
+                peerCommunicator = PeerCommunicator(socket)
+                peerCommunicator.send_handshake(self.id, infohash)
+                handshake = peerCommunicator.receive_handshake()
+                valid = peerCommunicator.validate_handshake(
+                    handshake,
+                    infohash,
+                    peer["peer_id"],
                 )
-                threads.append(thread)
+                if valid:
+                    peerCommunicator.receive_unchoke()
+                    peerCommunicator.send_interested()
+                    bitfield = peerCommunicator.receive_bitfield()
+                    conncected_peers.append(
+                        {
+                            "peer_id": peer["peer_id"],
+                            "socket": socket,
+                            "bitfield": bitfield,
+                        }
+                    )
+                else:
+                    continue
+            else:
+                continue
 
-            else:  # Put the index back to the queue
-                # print(
-                #     "[INFO-DownloadManager-_download] Peer connection failed, putting piece back to queue"
-                # )
-                piece_index_queue.put(piece_idx)
+        # Rarest first piece selection
+        rarest_pieces = self._get_rarest_pieces(
+            conncected_peers, pieceManager.num_pieces
+        )
 
-            peer_idx = (peer_idx + 1) % len(download_info["peer_list"])
+        # Separate pieces into batches
+        batch_size = 10
+        threads = []
 
-        # Start all threads
-        for thread in threads:
-            thread.start()
-        # print("[INFO-DownloadManager-_download] All threads started")
+        while rarest_pieces:
+            batch = rarest_pieces[:batch_size]
+            rarest_pieces = rarest_pieces[batch_size:]
+            for piece_idx in batch:
+                for peer in conncected_peers:
+                    if peer["bitfield"][piece_idx] == 1:
+                        thread = Thread(
+                            target=self._download_piece_thread,
+                            args=(
+                                pieceManager,
+                                piece_idx,
+                                infohash,
+                                peer["socket"],
+                                peer["peer_id"],
+                            ),
+                        )
+                        threads.append(thread)
+                        break
 
-        # Wait for all threads to finish
-        for thread in threads:
-            thread.join()
-        # print("[INFO-DownloadManager-_download] Download complete")
+            # Start and wait for the batch
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            threads.clear()
         piece_data: dict[int, bytes] = pieceManager.get_all_piece_data()
 
         # Create file tree
         self.fileManager.create_file_tree(download_info["torrent"], "./download_test/")
-        # print(
-        #     "[INFO-DownloadManager-_download] File tree created at", "./download_test/"
-        # )
 
         # Write the downloaded data to the destination file
         if download_info["torrent"].mode == "singlefile":
             dest_path = f"./download_test/{download_info['torrent'].name}"
-            # print(
-            #     "[INFO-DownloadManager-_download] Writing single file to destination path:",
-            #     dest_path,
-            # )
             self.fileManager.write_single_file(
                 dest_path,
                 piece_data,
             )
         else:
-            # print(
-            #     "[INFO-DownloadManager-_download] Writing multi file to destination path",
-            # )
             self.fileManager.write_multi_file(
                 "./download_test/", piece_data, download_info["torrent"].files
             )
@@ -126,56 +137,25 @@ class DownloadManager:
         piece_index: int,
         infohash: str,
         socket: socket.socket,
-        peer_id: str,
     ):
         peerCommunicator = PeerCommunicator(socket)
+        peerCommunicator.send_request(piece_index)
+        received_idx, piece_data = peerCommunicator.receive_piece()
+        if received_idx != piece_index:
+            return
+        if pieceManager.verify_piece(piece_data, piece_index):
+            pieceManager.add_downloaded_piece(piece_data, piece_index)
+            with self.lock:
+                self.active_downloads[infohash]["downloaded_total"] += len(piece_data)
+                self.active_downloads[infohash]["num_connected_peers"] -= 1
+            # print(
+            #     f"[INFO-DownloadManager-_download_piece_thread] Piece {piece_index} downloaded successfully"
+            # )
+            return
 
-        peerCommunicator.send_handshake(self.id, infohash)
-        handshake = peerCommunicator.receive_handshake()
-        valid = peerCommunicator.validate_handshake(
-            handshake,
-            infohash,
-            peer_id,
-        )
-
-        if valid:
-            peerCommunicator.receive_unchoke()
-            peerCommunicator.send_interested()
-            bitfield = peerCommunicator.receive_bitfield()
-
-            if bitfield[piece_index] == 1:
-                peerCommunicator.send_request(piece_index)
-                received_idx, piece_data = peerCommunicator.receive_piece()
-                if received_idx != piece_index:
-                    # print(
-                    #     f"[ERROR-DownloadManager-_download_piece_thread] Received piece {received_idx} does not match requested piece {piece_index}"
-                    # )
-                    return
-                if pieceManager.verify_piece(piece_data, piece_index):
-                    pieceManager.add_downloaded_piece(piece_data, piece_index)
-                    with self.lock:
-                        self.active_downloads[infohash]["downloaded_total"] += len(
-                            piece_data
-                        )
-                        self.active_downloads[infohash]["num_connected_peers"] -= 1
-                    # print(
-                    #     f"[INFO-DownloadManager-_download_piece_thread] Piece {piece_index} downloaded successfully"
-                    # )
-                    return
-
-                else:
-                    # print(
-                    #     f"[ERROR-DownloadManager-_download_piece_thread] Piece {piece_index} hash verification failed"
-                    # )
-                    return
-            else:
-                # print(
-                #     f"[INFO-DownloadManager-_download_piece_thread] Peer {peer_id} does not have piece {piece_index}"
-                # )
-                return
         else:
             # print(
-            #     f"[ERROR-DownloadManager-_download_piece_thread] Handshake failed with peer {peer_id}"
+            #     f"[ERROR-DownloadManager-_download_piece_thread] Piece {piece_index} hash verification failed"
             # )
             return
 
@@ -208,6 +188,14 @@ class DownloadManager:
                 in {self.active_downloads[infohash]["torrent"].name()}
             )
             return None
+
+    def _get_rarest_pieces(self, connected_peers, num_pieces):
+        piece_counts = [0] * num_pieces
+        for peer in connected_peers:
+            for idx, has_piece in enumerate(peer["bitfield"]):
+                if has_piece:
+                    piece_counts[idx] += 1
+        return sorted(range(len(piece_counts)), key=lambda x: piece_counts[x])
 
     def get_downloaded(self):
         """Returns the total downloaded data."""

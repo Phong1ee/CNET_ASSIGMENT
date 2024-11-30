@@ -52,6 +52,7 @@ class UploadManager:
         while not self.stopping_event.is_set():
             try:
                 client_socket, _ = server_socket.accept()
+                self._send_bitfield(client_socket)
                 Thread(
                     target=self._upload_piece_thread,
                     args=(client_socket,),
@@ -71,11 +72,13 @@ class UploadManager:
                 "num_connected_peers": 0,
             }
 
-    def _upload_piece_thread(
-        self,
-        client_socket: socket.socket,
-    ):
-        peer_communicator = PeerCommunicator(client_socket)
+    def _send_bitfield(self, peer_socket: socket.socket):
+        """Send the bitfield to the peer.
+        Args:
+            peer_socket (socket.socket): The socket to communicate with the peer.
+            bitfield (bytearray): The bitfield to send.
+        """
+        peer_communicator = PeerCommunicator(peer_socket)
 
         # Receive handshake from the peer
         handshake = peer_communicator.receive_handshake()
@@ -86,25 +89,33 @@ class UploadManager:
         val = peer_communicator.validate_handshake(handshake, infohash, peer_id)
         if not val:
             print("[INFO-UploadManager-_upload_piece_thread] Handshake failed")
-            client_socket.close()
+            peer_socket.close()
             return None
 
         # Check if local torrent folder has the requested infohash
         torrent_exist = self.fileManager.check_local_torrent(infohash)
         if not torrent_exist:
             print("[INFO-UploadManager-_upload_piece_thread] Torrent does not exist")
-            client_socket.close()
+            peer_socket.close()
             return None
 
         with self.lock:
             torrent = self.active_uploads[infohash]["torrent"]
         pieceManager = PieceManager(torrent, self.fileManager.destination_dir)
 
-        # Communicate with the peer
+        # Communicate with the peer and send the bitfield
         peer_communicator.send_handshake(self.id, infohash)
         peer_communicator.send_unchoke()
         peer_communicator.receive_interested()
         peer_communicator.send_bitfield(pieceManager.generate_bitfield())
+
+    def _upload_piece_thread(
+        self,
+        torrent,
+        client_socket: socket.socket,
+    ):
+        pieceManager = PieceManager(torrent, self.fileManager.destination_dir)
+        peer_communicator = PeerCommunicator(client_socket)
         piece_idx = peer_communicator.receive_request()
         piece_data = pieceManager.get_piece_data(piece_idx)
         # print("[INFO-UploadManager-_upload_piece_thread] Sending piece", piece_idx)
