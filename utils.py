@@ -29,3 +29,25 @@ def get_id():
     unique_component = str(random.randint(0, 999999999999)).zfill(12)
     id = f"{client_prefix}{unique_component}"
     return id
+
+
+def decode_val(val):
+    if isinstance(val, bytes):
+        try:
+            return bytes.decode(val, "utf-8", "strict")
+        except UnicodeDecodeError:
+            return val
+    elif isinstance(val, list):
+        return decode_list(val)
+    elif isinstance(val, dict):
+        return decode_dict(val)
+    else:
+        return val
+
+
+def decode_list(list):
+    return [decode_val(val) for val in list]
+
+
+def decode_dict(dict):
+    return {decode_val(k): decode_val(v) for k, v in dict.items()}

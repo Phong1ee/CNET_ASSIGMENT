@@ -4,7 +4,7 @@ import time
 import sys
 from time import sleep
 
-from torf import Torrent
+from Torrent import Torrent
 
 from DownloadManager import DownloadManager
 from FileManager import FileManager
@@ -22,18 +22,7 @@ class UserInterface:
         downloadManager: DownloadManager,
         uploadManager: UploadManager,
         trackerCommunicator: TrackerCommunicator,
-        fileManager: FileManager,
     ):
-        """Initialize a UserInterface object
-
-        Args:
-            torrent_dir (str): Path to the folder storing the torrents
-            dest_dir (str): Path to desired download folder
-            downloadManager (DownloadManager.DownloadManager): DownloadManager object
-            uploadManager (UploadManager.UploadManager): UploadManager object
-            trackerCommunicator (TrackerCommunicator.TrackerCommunicator): TrackerCommunicator object
-            fileManager (FileManager.FileManager): FileManager object
-        """
         self.ip = ip
         self.port = port
         self.torrent_dir = torrent_dir
@@ -41,7 +30,6 @@ class UserInterface:
         self.downloadManager = downloadManager
         self.uploadManager = uploadManager
         self.trackerCommunicator = trackerCommunicator
-        self.fileManager = fileManager
 
     def run(self):
         while True:
@@ -187,7 +175,7 @@ class UserInterface:
             torrent: The Torrent object.
         """
         while True:
-            torrent_list = self.fileManager.list_torrents()
+            torrent_list = FileManager.list_torrents(self.torrent_dir)
             print("Choose one of the availabe torrents:")
             print("--------------------------------------------")
             for i, torrent in enumerate(torrent_list):
@@ -217,27 +205,12 @@ class UserInterface:
                 continue
 
     def _get_download_info(self, last_it_progresses, last_it_totals):
-        """
-        Fetch download information for all active downloads.
-
-        Args:
-            last_it_progresses (list[int]): The previously recorded downloaded bytes for each file.
-            last_it_totals (list[int]): The previously recorded total bytes for each file.
-
-        Returns:
-            list[dict]: A list of dictionaries containing download information.
-        """
         # Get the current state of downloads
         file_names = self.downloadManager.get_file_names()
         progresses = self.downloadManager.get_downloaded()
         totals = self.downloadManager.get_total()
         num_peers = self.downloadManager.get_num_peers()
         num_connected_peers = self.downloadManager.get_num_connected_peers()
-        # Print all the above information
-        # print("progresses:", progresses)
-        # print("totals", totals)
-        # print("num peers", num_peers)
-        # print("num connected peers", num_connected_peers)
 
         # Calculate download rates and format them appropriately
         download_rates = []
@@ -263,15 +236,6 @@ class UserInterface:
         return info
 
     def _format_size(self, size):
-        """
-        Convert file size (bytes) into a human-readable format.
-
-        Args:
-            size (int): File size in bytes.
-
-        Returns:
-            str: Human-readable format (e.g., "512.00 KB", "1.23 MB").
-        """
         if size >= 1_000_000:
             return f"{size / 1_000_000:.2f} MB"
         elif size >= 1_000:
@@ -280,15 +244,6 @@ class UserInterface:
             return f"{size} B"
 
     def _format_rate(self, rate):
-        """
-        Convert download rate (bytes/s) into a human-readable format.
-
-        Args:
-            rate (int): Download speed in bytes per second.
-
-        Returns:
-            str: Human-readable format (e.g., "512.00 KB/s", "1.23 MB/s").
-        """
         if rate >= 1_000_000:
             return f"{rate / 1_000_000:.2f} MB/s"
         elif rate >= 1_000:
@@ -297,17 +252,10 @@ class UserInterface:
             return f"{rate} B/s"
 
     def _input_quit(self):
-        """
-        Check for user input to quit the process without blocking.
-
-        Returns:
-            bool: True if the user wants to quit, False otherwise.
-        """
-        # Check for Windows
         if sys.platform == "win32":
-            if msvcrt.kbhit():  # Check if a key was pressed
-                key = msvcrt.getch()  # Read the key
-                if key == b"q":  # Check if it matches 'q'
+            if msvcrt.kbhit():
+                key = msvcrt.getch()
+                if key == b"q":
                     return True
             return False
         else:

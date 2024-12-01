@@ -1,79 +1,79 @@
 import os
-from torf import Torrent
+
+from Torrent import Torrent
 
 
 class FileManager:
-    def __init__(self, torrent_dir: str, destination_dir: str):
-        self.torrent_dir = torrent_dir
-        self.destination_dir = destination_dir
+    @classmethod
+    def write_file(cls, destination, data, file_infos=None):
+        if file_infos is None:  # Single file mode
+            with open(destination, "wb") as f:
+                for _, piece_data in sorted(data.items()):
+                    f.write(piece_data)
+        else:  # Multi-file mode
+            offset = 0
+            concat_data = b"".join(piece_data for _, piece_data in sorted(data.items()))
+            for file_info in file_infos:
+                size = file_info[1]
+                write_path = os.path.join(destination, str(file_info[0]))
+                os.makedirs(
+                    os.path.dirname(write_path), exist_ok=True
+                )  # Ensure directories exist
+                with open(write_path, "wb") as f:
+                    file_data = concat_data[offset : offset + size]
+                    f.write(file_data)
+                offset += size
 
-    def write_single_file(self, destination_file_path, data):
-        with open(destination_file_path, "wb") as f:
-            for _, piece_data in sorted(data.items()):
-                f.write(piece_data)
+    @classmethod
+    def list_torrents(cls, torrent_dir):
+        files = [f for f in os.listdir(torrent_dir) if f.endswith(".torrent")]
+        return files
 
-    def write_multi_file(self, dest_dir, data, file_infos):
-        offset = 0
-        concat_data = b""
-        for _, piece_data in sorted(data.items()):
-            concat_data += piece_data
-        for file_info in file_infos:
-            size = file_info.size
-            write_path = dest_dir + str(file_info.parent) + "/" + str(file_info.name)
-            with open(write_path, "wb") as f:
-                data = concat_data[offset : offset + size]
-                # print(
-                #     f"writing to {write_path} with size {size} and length {len(data)}"
-                # )
-                f.write(data)
-            offset += size
-
-    def check_local_torrent(self, infohash: str):
-        files = self.list_torrents()
+    @classmethod
+    def check_local_torrent(cls, infohash: str, torrent_dir: str):
+        files = cls.list_torrents(torrent_dir)
         for file in files:
-            if Torrent.read(self.torrent_dir + file).infohash == infohash:
+            if Torrent.read(torrent_dir + file).infohash == infohash:
                 return True
         return False
 
-    def get_torrent_file_path(self, infohash: str):
-        files = self.list_torrents()
+    @classmethod
+    def get_torrent_file_path(cls, infohash: str, torrent_dir: str):
+        files = cls.list_torrents(torrent_dir)
         for file in files:
-            if Torrent.read(self.torrent_dir + file).infohash == infohash:
-                # print("[INFO-FileManager-get_file_path]", self.torrent_dir + file)
-                return self.torrent_dir + file
+            if Torrent.read(torrent_dir + file).infohash == infohash:
+                return torrent_dir + file
 
-    def get_original_file_path(self, infohash: str):
-        files = self.list_torrents()
+    @classmethod
+    def get_original_file_path(cls, infohash: str, original_dir: str, torrent_dir: str):
+        files = cls.list_torrents(torrent_dir)
         for file in files:
-            if Torrent.read(self.torrent_dir + file).infohash == infohash:
-                return self.destination_dir + Torrent.read(self.torrent_dir + file).name
+            if Torrent.read(torrent_dir + file).infohash == infohash:
+                return original_dir + Torrent.read(torrent_dir + file).name
 
-    def list_torrents(self):
-        files = [f for f in os.listdir(self.torrent_dir) if f.endswith(".torrent")]
-        return files
+    @classmethod
+    def create_file_tree(cls, torrent: Torrent, dest_path):
+        cls._process_file_tree(torrent.filetree, dest_path)
 
-    def create_file_tree(self, torrent: Torrent, path=None):
-        if path is None:
-            path = self.destination_dir
-        self._process_file_tree(torrent.filetree, path)
-        # print("[INFO-FileManager-create_file_tree] File tree created at", path)
-
-    def _process_file_tree(self, tree, base_path):
+    @staticmethod
+    def _process_file_tree(tree, base_path):
         for item, value in tree.items():
             if isinstance(value, dict):  # Directory
                 dir_path = os.path.join(base_path, item)
-                self._create_directory(dir_path)
-                self._process_file_tree(value, dir_path)
+                FileManager._create_directory(dir_path)
+                FileManager._process_file_tree(value, dir_path)
             else:  # File
                 file_path = os.path.join(base_path, item)
-                self._create_file(file_path)
+                FileManager._create_file(file_path)
 
-    def _create_directory(self, path):
+    @staticmethod
+    def _create_directory(path):
         try:
             os.makedirs(path)
         except FileExistsError:
             pass
 
-    def _create_file(self, path):
+    @staticmethod
+    def _create_file(path):
         with open(path, "w"):
             pass

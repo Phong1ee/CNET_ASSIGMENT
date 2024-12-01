@@ -2,7 +2,7 @@ from time import sleep
 from typing import Optional
 import bencodepy
 import requests
-from torf import Torrent
+from Torrent import Torrent
 
 from DownloadManager import DownloadManager
 from UploadManager import UploadManager
@@ -86,7 +86,7 @@ class TrackerCommunicator:
     def _prepare_announce_request(
         self,
         event: str = "",
-        torrent_file: Optional[Torrent] = None,
+        torrent_file=None,
         infohash: str = "",
     ):
         """Base for preparing an announce request to the tracker

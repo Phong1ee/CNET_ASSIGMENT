@@ -1,6 +1,6 @@
 import threading
 import hashlib
-from torf import Torrent
+from Torrent import Torrent
 
 
 class PieceManager:
@@ -48,15 +48,9 @@ class PieceManager:
     def _concat_data(self):
         data = b""
         for file_info in self.torrent.files:
-            if self.torrent.mode == "singlefile":
-                file_path = self.file_path + str(file_info.name)
-            else:
-                file_path = (
-                    self.file_path + str(file_info.parent) + "/" + str(file_info.name)
-                )
+            file_path = self.file_path + "/" + str(file_info[0])
 
             with open(file_path, "rb") as f:
-                # print("_concat_data is reading a file")
                 data += f.read()
         return data
 
@@ -73,11 +67,17 @@ class PieceManager:
 
     def verify_piece(self, piece_data, piece_idx):
         calculated_hash = hashlib.sha1(piece_data).digest()
-        print(f"Calculated hash: {calculated_hash}")
-        print(f"Expected hash: {self.hashes[piece_idx]}")
+        # print(f"Calculated hash: {calculated_hash}")
+        # print(f"Expected hash: {self.hashes[piece_idx]}")
         with self.lock:
             expected_hash = self.hashes[piece_idx]
         return calculated_hash == expected_hash
+
+    def verify_all_pieces(self):
+        for piece_idx, piece_data in self.downloaded_pieces.items():
+            if not self.verify_piece(piece_data, piece_idx):
+                return False
+        return True
 
     def add_downloaded_piece(self, piece_data: bytes, piece_idx: int):
         with self.lock:

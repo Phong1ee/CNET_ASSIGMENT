@@ -9,14 +9,11 @@ from threading import Thread
 
 
 def main(host: str, port: int):
-    # Initialize the file manager
-    fileManager = FileManager(torrent_dir, dest_dir)
-
     # Initialize the download manager
-    downloadManager = DownloadManager(id, dest_dir, fileManager)
+    downloadManager = DownloadManager(id, torrent_dir, dest_dir)
 
     # Initialize the upload manager
-    uploadManager = UploadManager(id, host, port, torrent_dir, fileManager)
+    uploadManager = UploadManager(id, host, port, torrent_dir, dest_dir)
     server_thread = Thread(target=uploadManager.run_server, daemon=True)
     server_thread.start()
 
@@ -38,7 +35,6 @@ def main(host: str, port: int):
         downloadManager,
         uploadManager,
         trackerCommunicator,
-        fileManager,
     )
     ui.run()
 
