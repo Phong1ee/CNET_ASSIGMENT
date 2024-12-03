@@ -24,9 +24,9 @@ class UploadManager:
         self.ip = ip
         self.port = port
 
-        self.active_uploads: dict[
-            str, dict
-        ] = {}  # A dictionary to store active uploads
+        self.active_uploads: dict[str, dict] = (
+            {}
+        )  # A dictionary to store active uploads
         self.lock = threading.Lock()
         self.stopping_event = threading.Event()
 
@@ -72,6 +72,7 @@ class UploadManager:
 
         # Receive handshake from the peer
         handshake = peer_communicator.receive_handshake()
+        # print("received handshake")
         infohash = handshake[28:48].hex()
         peer_id = handshake[48:].decode("utf-8")
 
@@ -95,16 +96,23 @@ class UploadManager:
 
         # Communicate with the peer
         peer_communicator.send_handshake(self.id, infohash)
+        # print("sent handshake")
         peer_communicator.send_unchoke()
+        # print("sent unchoke")
         peer_communicator.receive_interested()
+        # print("received interested")
         peer_communicator.send_bitfield(pieceManager.generate_bitfield())
+        # print("sent bitfield")
 
         while True:
             piece_idx = peer_communicator.receive_request()
+            # print(f"received request for piece {piece_idx}")
             if piece_idx is None:
+                # print("received choke")
                 break
             piece_data = pieceManager.get_piece_data(piece_idx)
             peer_communicator.send_piece(piece_idx, piece_data)
+            # print(f"sent piece {piece_idx}")
             # Update the total uploaded size
             with self.lock:
                 self.active_uploads[infohash]["uploaded_total"] += len(piece_data)

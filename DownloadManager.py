@@ -19,13 +19,13 @@ class DownloadManager:
         self.torrent_dir = torrent_dir
         self.dest_dir = dest_dir
         self.id = id
-        self.MAXIMUM_CONNCET_RETRY = 5
+        self.MAXIMUM_CONNECT_RETRY = 5
         self.MAXIMUM_DOWNLOAD_RETRY = 3
         self.BATCH_SIZE = 10
 
-        self.active_downloads: dict[
-            str, dict
-        ] = {}  # A dictionary to store active downloads
+        self.active_downloads: dict[str, dict] = (
+            {}
+        )  # A dictionary to store active downloads
         self.lock = threading.Lock()
 
     def new_download(self, torrent: Torrent, peer_list: list):
@@ -53,7 +53,7 @@ class DownloadManager:
         connected_peers = []
         peer_to_connect = peer_list.copy()
 
-        for _ in range(self.MAXIMUM_CONNCET_RETRY):
+        for _ in range(self.MAXIMUM_CONNECT_RETRY):
             for peer in peer_to_connect[:]:
                 socket = self._connect_peer(infohash, peer)
                 if socket:
@@ -66,7 +66,7 @@ class DownloadManager:
         print(
             f"Connected to {len(connected_peers)} out of {len(peer_list)} peers for {download_info['torrent'].name}"
         )
-        print(f"Connected peers: {connected_peers}")
+        print("Connected peers: ", connected_peers)
 
         # Retrieve bitfields from connected peers
         bitfields: dict[str, bytearray] = {}
@@ -90,10 +90,8 @@ class DownloadManager:
             print(f"Download attempt {retry_attempt + 1}")
 
             if retry_attempt == 0:
-                # First attempt: Assign rarest pieces
                 pieces_to_download = self._get_rarest_pieces(bitfields)
             else:
-                # Retry failed pieces
                 if failed_pieces.empty():
                     print("No failed pieces to retry.")
                     break
@@ -181,12 +179,13 @@ class DownloadManager:
     ):
         peerCommunicator = PeerCommunicator(socket)
         for piece_index in assigned_pieces:
+            # print("Attemping to download piece ", piece_index)
             for attempt in range(MAXIMUM_RETRY):
                 try:
                     peerCommunicator.send_request(piece_index)
-                    print("DownloadManager: sent request for piece ", piece_index)
+                    # print("DownloadManager: sent request for piece ", piece_index)
                     received_idx, piece_data = peerCommunicator.receive_piece()
-                    print("DownloadManager: received piece ", received_idx)
+                    # print("DownloadManager: received piece ", received_idx)
 
                     if received_idx != piece_index:
                         raise Exception(
@@ -223,8 +222,11 @@ class DownloadManager:
     ):
         peerCommunicator = PeerCommunicator(socket)
         peerCommunicator.receive_unchoke()
+        # print("received unchoke from peer ", peer_id)
         peerCommunicator.send_interested()
+        # print("sent interested to peer ", peer_id)
         bitfield = peerCommunicator.receive_bitfield()
+        # print("received bitfield from peer ", peer_id)
         with self.lock:
             bitfields[peer_id] = bitfield
 
@@ -239,12 +241,17 @@ class DownloadManager:
         try:
             # Connect to the peer
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            buffer_size = 1024 * 1024
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, buffer_size)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, buffer_size)
             s.connect((ip, port))
 
             # Handshake with the peer
             peer_communicator = PeerCommunicator(s)
             peer_communicator.send_handshake(self.id, infohash)
+            # print(f"Sent handshake to {ip}:{port}")
             handshake = peer_communicator.receive_handshake()
+            # print(f"Received handshake from {ip}:{port}")
             infohash = handshake[28:48].hex()
             peer_id = handshake[48:].decode("utf-8")
 
@@ -257,10 +264,7 @@ class DownloadManager:
                 self.active_downloads[infohash]["num_connected_peers"] += 1
             return s
         except Exception as e:
-            print(
-                f"[Connect Peer] Error while connecting to peer {ip}:{port}: {e}"
-                in {self.active_downloads[infohash]["torrent"].name()}
-            )
+            print(e)
             return None
 
     def _get_rarest_pieces(self, bitfields):
