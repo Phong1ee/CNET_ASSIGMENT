@@ -1,5 +1,4 @@
 import os
-import msvcrt
 import time
 import sys
 from time import sleep
@@ -36,28 +35,28 @@ class UserInterface:
             self._clear()
             option = self.menu()
 
-            match option:
-                case "1":
-                    self._clear()
-                    self.new_download()
-                case "2":
-                    self._clear()
-                    self.new_upload()
-                case "3":
-                    self._clear()
-                    self.show_downloading()
-                case "4":
-                    self._clear()
-                    self.show_uploading()
-                case "5":
-                    self.exit()
-                case _:
-                    print("Invalid option, only input 1->5")
-                    sleep(1)
+            if option == "1":
+                self._clear()
+                self.new_download()
+            elif option == "2":
+                self._clear()
+                self.new_upload()
+            elif option == "3":
+                self._clear()
+                self.show_downloading()
+            elif option == "4":
+                self._clear()
+                self.show_uploading()
+            elif option == "5":
+                self.exit()
+            else:
+                print("Invalid option, only input 1->5")
+                sleep(1)
 
     def menu(self):
         print(f"Welcome to our Simple BitTorrent client! You are {self.ip}:{self.port}")
         print("You are Online!, other peers may connect to you")
+        print("server running on: ", self.ip, ":", self.port)
         print("--------------------------------------------")
         print("[1] Download a Torrent")
         print("[2] Upload a Torrent")
@@ -152,7 +151,7 @@ class UserInterface:
             print("--------------------------------------------")
             print("Press 'q' to return.")
 
-            time.sleep(0.1)
+            time.sleep(0.5)
 
             if self._input_quit():
                 break
@@ -215,7 +214,7 @@ class UserInterface:
         # Calculate download rates and format them appropriately
         download_rates = []
         for i, progress in enumerate(progresses):
-            rate = (progress - last_it_progresses[i]) * 10
+            rate = (progress - last_it_progresses[i]) * 2
             download_rates.append(self._format_rate(rate))
 
         # Update the last iteration's values
@@ -253,6 +252,8 @@ class UserInterface:
 
     def _input_quit(self):
         if sys.platform == "win32":
+            import msvcrt
+
             if msvcrt.kbhit():
                 key = msvcrt.getch()
                 if key == b"q":

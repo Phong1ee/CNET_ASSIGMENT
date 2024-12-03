@@ -62,6 +62,7 @@ class DownloadManager:
 
             if len(connected_peers) >= len(peer_list):
                 break
+
         print(
             f"Connected to {len(connected_peers)} out of {len(peer_list)} peers for {download_info['torrent'].name}"
         )
@@ -79,49 +80,71 @@ class DownloadManager:
         while len(bitfields) < len(connected_peers):
             pass
 
-        # Get the rarest pieces
-        rarest_pieces = self._get_rarest_pieces(bitfields)
-        print(f"Rarest pieces: {rarest_pieces}")
+        print("All bitfields retrieved.")
 
-        # Initialize a queue to store failed pieces
+        # Initialize the failed pieces queue
         failed_pieces: queue.Queue = queue.Queue()
 
-        # Assign pieces to peers in a RoundRobin manner
-        assigned_dict: dict[str, list] = {
-            peer["peer"]["peer_id"]: [] for peer in connected_peers
-        }
-        for piece_idx in rarest_pieces:
-            for peer in connected_peers:
+        # Download and retry loop
+        for retry_attempt in range(self.MAXIMUM_DOWNLOAD_RETRY + 1):
+            print(f"Download attempt {retry_attempt + 1}")
+
+            if retry_attempt == 0:
+                # First attempt: Assign rarest pieces
+                pieces_to_download = self._get_rarest_pieces(bitfields)
+            else:
+                # Retry failed pieces
+                if failed_pieces.empty():
+                    print("No failed pieces to retry.")
+                    break
+                pieces_to_download = list(failed_pieces.queue)
+                failed_pieces.queue.clear()
+
+            print(f"Pieces to download: {pieces_to_download}")
+
+            # Assign pieces to peers in a Round-Robin manner
+            assigned_dict: dict[str, list] = {
+                peer["peer"]["peer_id"]: [] for peer in connected_peers
+            }
+            for i, piece_idx in enumerate(pieces_to_download):
+                peer = connected_peers[i % len(connected_peers)]
                 peer_id = peer["peer"]["peer_id"]
+
                 if bitfields[peer_id][piece_idx] == 1:
                     assigned_dict[peer_id].append(piece_idx)
-                    break  # Move to the next piece
-        print(f"Assigned pieces: {assigned_dict}")
 
-        # Start the download threads for each peer
-        threads = []
-        for peer in connected_peers:
-            peer_id = peer["peer"]["peer_id"]
-            assigned_pieces = assigned_dict[peer_id]
-            thread = Thread(
-                target=self._download_piece_thread,
-                args=(
-                    pieceManager,
-                    assigned_pieces,
-                    infohash,
-                    peer["socket"],
-                    failed_pieces,
-                    self.MAXIMUM_DOWNLOAD_RETRY,
-                ),
+            print(f"Assigned pieces: {assigned_dict}")
+
+            # Start download threads
+            threads = []
+            for peer in connected_peers:
+                peer_id = peer["peer"]["peer_id"]
+                assigned_pieces = assigned_dict[peer_id]
+
+                if assigned_pieces:
+                    thread = Thread(
+                        target=self._download_piece_thread,
+                        args=(
+                            pieceManager,
+                            assigned_pieces,
+                            infohash,
+                            peer["socket"],
+                            failed_pieces,
+                            self.MAXIMUM_DOWNLOAD_RETRY,
+                        ),
+                    )
+                    threads.append(thread)
+                    thread.start()
+
+            # Wait for all threads to finish
+            for thread in threads:
+                thread.join()
+
+        if not failed_pieces.empty():
+            print(
+                f"Failed to download some pieces after {self.MAXIMUM_DOWNLOAD_RETRY} retries."
             )
-            threads.append(thread)
-            thread.start()
-
-        # Wait for all threads to finish
-        for thread in threads:
-            thread.join()
-
-        # TODO: Retry failed pieces
+            return
 
         print(f"Download finished for {download_info['torrent'].name}")
 
@@ -132,11 +155,12 @@ class DownloadManager:
                 f"Downloaded data verification failed for {download_info['torrent'].name}"
             )
             return
+        print(
+            f"Downloaded data verification passed for {download_info['torrent'].name}"
+        )
 
         # Finalize download
         piece_data = pieceManager.get_all_piece_data()
-
-        # FileManager.create_file_tree(download_info["torrent"], self.dest_dir)
         FileManager.create_file_tree(download_info["torrent"], "./download_test/")
         FileManager.write_file(
             "./download_test/", piece_data, download_info["torrent"].files
@@ -160,7 +184,9 @@ class DownloadManager:
             for attempt in range(MAXIMUM_RETRY):
                 try:
                     peerCommunicator.send_request(piece_index)
+                    print("DownloadManager: sent request for piece ", piece_index)
                     received_idx, piece_data = peerCommunicator.receive_piece()
+                    print("DownloadManager: received piece ", received_idx)
 
                     if received_idx != piece_index:
                         raise Exception(

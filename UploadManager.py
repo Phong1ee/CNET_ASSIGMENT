@@ -43,7 +43,8 @@ class UploadManager:
 
         while not self.stopping_event.is_set():
             try:
-                client_socket, _ = server_socket.accept()
+                client_socket, addr = server_socket.accept()
+                print(f"{addr} is connecting")
                 Thread(
                     target=self._upload_piece_thread,
                     args=(client_socket,),

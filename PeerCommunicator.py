@@ -1,4 +1,5 @@
 import struct
+import time
 import select
 from socket import socket
 
@@ -6,9 +7,17 @@ from socket import socket
 class PeerCommunicator:
     def __init__(self, socket: socket, timeout=5):
         self.socket = socket
-        self.timeout = timeout  # Timeout for operations in seconds
+        self.timeout = timeout
+
+    # def _wait_for_data(self):
+    #     ready, _, _ = select.select([self.socket], [], [], self.timeout)
+    #     if not ready:
+    #         raise TimeoutError("Timeout waiting for data from peer")
 
     def _wait_for_data(self):
+        if self.socket.fileno() == -1:  # Check if the socket is open
+            raise ConnectionError("Socket is closed.")
+
         ready, _, _ = select.select([self.socket], [], [], self.timeout)
         if not ready:
             raise TimeoutError("Timeout waiting for data from peer")
@@ -96,10 +105,49 @@ class PeerCommunicator:
         self._send_message(5, bitfield)
 
     def send_request(self, piece_index):
+        print("PeerCommunicator: Sending request for piece", piece_index)
         self._send_message(6, struct.pack(">I", piece_index))
 
+    # def send_piece(self, piece_index, piece_data):
+    #     chunk_size = 4096
+    #     divided_piece = [
+    #         piece_data[i : i + chunk_size]
+    #         for i in range(0, len(piece_data), chunk_size)
+    #     ]
+    #
+    #     for i, piece_chunk in enumerate(divided_piece):
+    #         is_last_chunk = 1 if i == len(divided_piece) - 1 else 0
+    #         payload = (
+    #             struct.pack(">I", piece_index)
+    #             + struct.pack(">B", is_last_chunk)
+    #             + piece_chunk
+    #         )
+    #         self._send_message(7, payload)
+    #         time.sleep(0.005)
+
     def send_piece(self, piece_index, piece_data):
-        self._send_message(7, struct.pack(">I", piece_index) + piece_data)
+        block_size = 4 * 1024
+
+        divided_piece = [
+            piece_data[i : i + block_size]
+            for i in range(0, len(piece_data), block_size)
+        ]
+
+        for i, piece_block in enumerate(divided_piece):
+            is_last_block = 1 if i == len(divided_piece) - 1 else 0
+
+            payload = (
+                struct.pack(">I", piece_index)
+                + struct.pack(">B", is_last_block)
+                + piece_block
+            )
+
+            try:
+                self._send_message(7, payload)
+            except Exception as e:
+                raise ConnectionError(f"Failed to send piece chunk: {e}")
+
+            time.sleep(0.01)
 
     def receive_message_type(self):
         self._wait_for_data()
@@ -123,13 +171,53 @@ class PeerCommunicator:
         if payload == b"":
             return None
         piece_index = struct.unpack(">I", payload)[0]
+        print("PeerCommunicator: Received request for piece", piece_index)
         return piece_index
 
+    # def receive_piece(self):
+    #     piece_data = b""
+    #     piece_index = None
+    #
+    #     while True:
+    #         self._wait_for_data()
+    #         _, payload = self._receive_message()
+    #
+    #         if piece_index is None:
+    #             piece_index = struct.unpack(">I", payload[:4])[0]
+    #
+    #         is_last_chunk = struct.unpack(">B", payload[4:5])[0]
+    #         piece_data += payload[5:]
+    #
+    #         if is_last_chunk == 1:
+    #             break
+    #
+    #     return piece_index, piece_data
+
     def receive_piece(self):
-        self._wait_for_data()
-        _, payload = self._receive_message()
-        piece_index = struct.unpack(">I", payload[:4])[0]
-        piece_data = payload[4:]
+        piece_data = b""
+        piece_index = None
+
+        while True:
+            try:
+                _, payload = self._receive_message()
+            except Exception as e:
+                raise ConnectionError(f"Error receiving message: {e}")
+
+            if len(payload) < 5:
+                raise ValueError("Invalid payload length received.")
+
+            if piece_index is None:
+                piece_index = struct.unpack(">I", payload[:4])[0]
+
+            is_last_chunk = struct.unpack(">B", payload[4:5])[
+                0
+            ]  # Extract last chunk flag
+            piece_data += payload[5:]  # Append chunk data
+
+            if is_last_chunk == 1:
+                break  # Exit loop if this is the last chunk
+
+        print("PeerCommunicator: received piece", piece_index)
         return piece_index, piece_data
 
     def receive_choke(self):

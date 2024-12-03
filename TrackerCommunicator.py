@@ -1,5 +1,4 @@
 from time import sleep
-from typing import Optional
 import bencodepy
 import requests
 from Torrent import Torrent
@@ -80,7 +79,6 @@ class TrackerCommunicator:
         if peers:
             return peers
         else:
-            # print("[Handle Response] No peers found in the response.")
             return None
 
     def _prepare_announce_request(
@@ -118,7 +116,7 @@ class TrackerCommunicator:
             "left": left,
             "compact": 0,
             "event": event,
-            "numwant": 0,
+            "numwant": 50,
         }
         return params
 

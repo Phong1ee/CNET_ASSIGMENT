@@ -76,6 +76,9 @@ class PieceManager:
     def verify_all_pieces(self):
         for piece_idx, piece_data in self.downloaded_pieces.items():
             if not self.verify_piece(piece_data, piece_idx):
+                print(
+                    f"[ERROR-PieceManager-verify_all_pieces]: Piece {piece_idx} is corrupted"
+                )
                 return False
         return True
 
