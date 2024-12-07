@@ -7,6 +7,8 @@ from Torrent import Torrent
 from FileManager import FileManager
 from PieceManager import PieceManager
 from PeerCommunicator import PeerCommunicator
+from TrackerCommunicator import TrackerCommunicator
+from UploadManager import UploadManager
 
 
 class DownloadManager:
@@ -15,10 +17,14 @@ class DownloadManager:
         id: str,
         torrent_dir: str,
         dest_dir: str,
+        uploadManager: UploadManager,
+        trackerCommunicator: TrackerCommunicator,
     ):
         self.torrent_dir = torrent_dir
         self.dest_dir = dest_dir
         self.id = id
+        self.uploadManager = uploadManager
+        self.trackerCommunicator = trackerCommunicator
         self.MAXIMUM_CONNECT_RETRY = 5
         self.MAXIMUM_DOWNLOAD_RETRY = 3
         self.BATCH_SIZE = 10
@@ -63,12 +69,13 @@ class DownloadManager:
             if len(connected_peers) >= len(peer_list):
                 break
 
-        print(
-            f"Connected to {len(connected_peers)} out of {len(peer_list)} peers for {download_info['torrent'].name}"
-        )
-        print("Connected peers: ", connected_peers)
+        # print(
+        #     f"Connected to {len(connected_peers)} out of {len(peer_list)} peers for {download_info['torrent'].name}"
+        # )
+        # print("Connected peers: ", connected_peers)
 
         # Retrieve bitfields from connected peers
+
         bitfields: dict[str, bytearray] = {}
         for peer in connected_peers:
             Thread(
@@ -159,14 +166,17 @@ class DownloadManager:
 
         # Finalize download
         piece_data = pieceManager.get_all_piece_data()
-        FileManager.create_file_tree(download_info["torrent"], "./download_test/")
+        FileManager.create_file_tree(download_info["torrent"], self.dest_dir)
         FileManager.write_file(
-            "./download_test/", piece_data, download_info["torrent"].files
+            self.dest_dir, piece_data, download_info["torrent"].files
         )
 
         with self.lock:
             del self.active_downloads[infohash]
         print(f"Write file completed for {download_info['torrent'].name}")
+
+        self.uploadManager.new_upload(download_info["torrent"])
+        self.trackerCommunicator.upload_announce(download_info["torrent"])
 
     def _download_piece_thread(
         self,

@@ -44,25 +44,23 @@ class UserInterface:
             elif option == "3":
                 self._clear()
                 self.show_downloading()
+            # elif option == "4":
+            #     self._clear()
+            #     self.show_uploading()
             elif option == "4":
-                self._clear()
-                self.show_uploading()
-            elif option == "5":
                 self.exit()
             else:
-                print("Invalid option, only input 1->5")
+                print("Invalid option, only input 1->4")
                 sleep(1)
 
     def menu(self):
         print(f"Welcome to our Simple BitTorrent client! You are {self.ip}:{self.port}")
         print("You are Online!, other peers may connect to you")
-        print("server running on: ", self.ip, ":", self.port)
         print("--------------------------------------------")
         print("[1] Download a Torrent")
         print("[2] Upload a Torrent")
         print("[3] View downloading files")
-        print("[4] View uploading files")
-        print("[5] Exit")
+        print("[4] Exit")
         print("--------------------------------------------")
         option = input("Choose an option: ")
 
@@ -78,6 +76,7 @@ class UserInterface:
         print("--------------------------------------------")
         print("Torrent file information:")
         print(f"Name: {torrent.name}")
+        print(f"Infohash: {torrent.infohash}")
         print(f"Size: {torrent.size} bytes")
         print(f"Piece size: {torrent.piece_size} bytes")
         print(f"Number of files: {len(torrent.files)}")
@@ -103,15 +102,18 @@ class UserInterface:
         input("Enter to return...")
 
     def new_upload(self):
-        # Input the .torrent file
-        torrent = self._input_torrent()
-        if torrent is None:
+        # Input the file
+        file_path = self._input_file()
+        if file_path is None:
             return
+        torrent_path = Torrent.generate_torrent(file_path, self.torrent_dir)
+        torrent = Torrent.read(torrent_path)
 
         # Display the file information
         print("--------------------------------------------")
         print("Torrent file information:")
         print(f"Name: {torrent.name}")
+        print(f"Infohash: {torrent.infohash}")
         print(f"Size: {torrent.size} bytes")
         print(f"Piece size: {torrent.piece_size} bytes")
         print(f"Number of files: {len(torrent.files)}")
@@ -137,9 +139,13 @@ class UserInterface:
             self._clear()
             download_info = self._get_download_info(last_it_progresses, last_it_totals)
 
-            print("--------------------------------------------")
+            print(
+                "----------------------------------------------------------------------------------------"
+            )
             print(f"Currently downloading: {len(download_info)}")
-            print("--------------------------------------------")
+            print(
+                "----------------------------------------------------------------------------------------"
+            )
             print(
                 f"{'File Name':<20}{'Progress':<30}{'Speed':<15}{'Peers':<10}{'Connected':<10}"
             )
@@ -148,7 +154,9 @@ class UserInterface:
                     f"{info['file_name']:<20}{info['progress']:<30}{info['rate']:<15}{info['peers']:<10}{info['connected_peers']:<10}"
                 )
 
-            print("--------------------------------------------")
+            print(
+                "----------------------------------------------------------------------------------------"
+            )
             print("Press 'q' to return.")
 
             time.sleep(0.5)
@@ -167,6 +175,36 @@ class UserInterface:
         print("--------------------------------------------")
         input("Enter to return...")
 
+    def _input_file(self):
+        """Get user input the path to a file and return the file path.
+
+        Returns:
+            file_path: The path to the file.
+        """
+        while True:
+            file_list = FileManager.list_files(self.dest_dir)
+            print("Choose one of the available files:")
+            print("--------------------------------------------")
+            for i, file in enumerate(file_list):
+                print(f"[{i}] {file}")
+            print("--------------------------------------------")
+            option = input("Enter the index or 'q' to return: ")
+            try:
+                if option == "q":
+                    break
+                if int(option) < 0 or int(option) > (len(file_list) - 1):
+                    raise ValueError
+                file_name = file_list[int(option)]
+                file_path = self.dest_dir + file_name
+                if not os.path.exists(file_path):
+                    print("File not found. Please try again.")
+                    input("Enter to continue...")
+                return file_path
+            except ValueError:
+                print(f"Invalid option. Please ony input 0->{len(file_list)-1} or 'q'")
+                input("Enter to continue...")
+                self._clear()
+
     def _input_torrent(self):
         """Get user input the path to a torrent file and return the Torrent object.
 
@@ -175,7 +213,7 @@ class UserInterface:
         """
         while True:
             torrent_list = FileManager.list_torrents(self.torrent_dir)
-            print("Choose one of the availabe torrents:")
+            print("Choose one of the available torrents:")
             print("--------------------------------------------")
             for i, torrent in enumerate(torrent_list):
                 print(f"[{i}] {torrent}")

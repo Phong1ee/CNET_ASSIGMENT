@@ -3,23 +3,16 @@ import bencodepy
 import requests
 from Torrent import Torrent
 
-from DownloadManager import DownloadManager
-from UploadManager import UploadManager
-
 
 class TrackerCommunicator:
     def __init__(
         self,
         id: str,
         url: str,
-        downloadManager: DownloadManager,
-        uploadManager: UploadManager,
         host: str,
         port: int,
     ):
         self.url = url
-        self.downloadManager = downloadManager
-        self.uploadManager = uploadManager
         self.announce_interval = 0
         self.host = host
         self.port = port

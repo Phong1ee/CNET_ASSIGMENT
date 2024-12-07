@@ -25,6 +25,11 @@ class FileManager:
                 offset += size
 
     @classmethod
+    def list_files(cls, path):
+        files = [f for f in os.listdir(path)]
+        return files
+
+    @classmethod
     def list_torrents(cls, torrent_dir):
         files = [f for f in os.listdir(torrent_dir) if f.endswith(".torrent")]
         return files

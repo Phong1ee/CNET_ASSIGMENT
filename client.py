@@ -1,6 +1,5 @@
 from DownloadManager import DownloadManager
 from UploadManager import UploadManager
-from FileManager import FileManager
 from UserInterface import UserInterface
 from TrackerCommunicator import TrackerCommunicator
 import utils
@@ -9,22 +8,22 @@ from threading import Thread
 
 
 def main(host: str, port: int):
-    # Initialize the download manager
-    downloadManager = DownloadManager(id, torrent_dir, dest_dir)
+    # Initialize the tracker communicator
+    trackerCommunicator = TrackerCommunicator(
+        id,
+        tracker_url,
+        host,
+        port,
+    )
 
     # Initialize the upload manager
     uploadManager = UploadManager(id, host, port, torrent_dir, dest_dir)
     server_thread = Thread(target=uploadManager.run_server, daemon=True)
     server_thread.start()
 
-    # Initialize the tracker communicator
-    trackerCommunicator = TrackerCommunicator(
-        id,
-        tracker_url,
-        downloadManager,
-        uploadManager,
-        host,
-        port,
+    # Initialize the download manager
+    downloadManager = DownloadManager(
+        id, torrent_dir, dest_dir, uploadManager, trackerCommunicator
     )
 
     ui = UserInterface(
@@ -42,7 +41,7 @@ def main(host: str, port: int):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="Client",
-        description="Connect to tracker",
+        description="BitTorrent client",
         epilog="!!!It requires the tracker running and listening!!!",
     )
     parser.add_argument("--tracker-url", type=str, required=False)
@@ -50,8 +49,6 @@ if __name__ == "__main__":
     parser.add_argument("--dest-dir", type=str, required=False)
     parser.add_argument("--port", type=int, required=False)
     args = parser.parse_args()
-
-    tracker_url = "http://192.168.1.106"
 
     id = utils.get_id()
     host = utils.get_ip()

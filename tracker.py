@@ -51,6 +51,9 @@ class Tracker:
             # modify the peer info if it already exists
             for peer in swarm["peers"]:
                 if peer["ip"] == ip and peer["port"] == port:
+                    if is_seeder:
+                        swarm["complete"] += 1
+                        swarm["incomplete"] -= 1
                     peer["peer_id"] = peer_id
                     peer_exist = True
                     break

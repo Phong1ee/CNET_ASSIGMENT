@@ -24,9 +24,7 @@ class UploadManager:
         self.ip = ip
         self.port = port
 
-        self.active_uploads: dict[str, dict] = (
-            {}
-        )  # A dictionary to store active uploads
+        self.active_uploads: dict[str, dict] = {}
         self.lock = threading.Lock()
         self.stopping_event = threading.Event()
 
