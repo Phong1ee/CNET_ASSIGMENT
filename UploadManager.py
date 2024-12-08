@@ -89,7 +89,14 @@ class UploadManager:
             return None
 
         with self.lock:
-            torrent = self.active_uploads[infohash]["torrent"]
+            try:
+                torrent = self.active_uploads[infohash]["torrent"]
+            except KeyError:
+                print(
+                    "[INFO-UploadManager-_upload_piece_thread] Peer is not ready to seed this torrent"
+                )
+                client_socket.close()
+                return None
         pieceManager = PieceManager(torrent, self.original_dir)
 
         # Communicate with the peer
