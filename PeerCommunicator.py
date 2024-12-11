@@ -1,3 +1,4 @@
+import traceback
 import struct
 import time
 import select
@@ -81,7 +82,18 @@ class PeerCommunicator:
             raise ConnectionError("Peer disconnected")
         length = struct.unpack(">I", length_bytes)[0]
         message_id = struct.unpack(">B", self.socket.recv(1))[0]
-        payload = self.socket.recv(length - 1) if length > 1 else b""
+        try:
+            payload = self.socket.recv(length - 1) if length > 1 else b""
+        except Exception as e:
+            print("[ERROR-_receive_message] error upon receiving message")
+            # print(
+            #     "[TRACEBACK] ",
+            #     "".join(
+            #         traceback.format_exception(
+            #             etype=type(e), value=e, tb=e.__traceback__
+            #         )
+            #     ),
+            # )
         return message_id, payload
 
     def send_choke(self):
@@ -165,7 +177,7 @@ class PeerCommunicator:
 
     def receive_piece(self):
         """Receive a piece from the peer, handling multiple chunks."""
-        chunks = []
+        piece_data = bytearray()
         piece_index = None
 
         while True:
@@ -177,17 +189,16 @@ class PeerCommunicator:
                     piece_index = struct.unpack(">I", payload[:4])[0]
 
                 is_last_chunk = struct.unpack(">B", payload[4:5])[0]
-                chunks.append(payload[5:])
+                piece_data.extend(payload[5:])
 
                 if is_last_chunk == 1:
                     break
-                time.sleep(0.003)
+                time.sleep(0.0005)
             except Exception as e:
-                print(f"Error receiving piece: {e}")
+                # print(f"Error receiving piece: {e}")
                 raise
 
         # Join all chunks into the final piece data
-        piece_data = b"".join(chunks)
         # print(f"Received piece {piece_index}")
         return piece_index, piece_data
 

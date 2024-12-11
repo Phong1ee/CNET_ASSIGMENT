@@ -1,4 +1,6 @@
+import time
 import queue
+import traceback
 import socket
 import threading
 from threading import Thread
@@ -107,6 +109,11 @@ class DownloadManager:
 
             print(f"Pieces to download: {pieces_to_download}")
 
+            # Check for disconnected peers and reconnect them
+            connected_peers = self._check_and_reconnect_peers(
+                connected_peers, peer_list, infohash
+            )
+
             # Assign pieces to peers in a Round-Robin manner
             assigned_dict: dict[str, list] = {
                 peer["peer"]["peer_id"]: [] for peer in connected_peers
@@ -196,6 +203,7 @@ class DownloadManager:
                     # print("DownloadManager: sent request for piece ", piece_index)
                     received_idx, piece_data = peerCommunicator.receive_piece()
                     # print("DownloadManager: received piece ", received_idx)
+                    # time.sleep(1)
 
                     if received_idx != piece_index:
                         raise Exception(
@@ -203,6 +211,7 @@ class DownloadManager:
                         )
 
                     if pieceManager.verify_piece(piece_data, piece_index):
+                        print(f"Verifcation succesful for piece ", piece_index)
                         pieceManager.add_downloaded_piece(piece_data, piece_index)
                         with self.lock:
                             self.active_downloads[infohash]["downloaded_total"] += len(
@@ -213,9 +222,26 @@ class DownloadManager:
                     else:
                         raise Exception("Piece verification failed")
                 except Exception as e:
-                    print(
-                        f"[ERROR] Download failed for piece {piece_index}, attempt {attempt + 1}/{MAXIMUM_RETRY}: {e}"
-                    )
+                    # print(
+                    #     f"[ERROR] Download failed for piece {piece_index}, attempt {attempt + 1}/{MAXIMUM_RETRY}: {e}"
+                    # )
+                    # print(
+                    #     "[TRACEBACK] ",
+                    #     "".join(
+                    #         traceback.format_exception(
+                    #             etype=type(e), value=e, tb=e.__traceback__
+                    #         )
+                    #     ),
+                    # )
+                    try:
+                        socket.setblocking(False)
+                        while True:
+                            data = socket.recv(4096)
+                            # print("flushed", data)
+                    except BlockingIOError:
+                        print("flushed buffer after error")
+                    except Exception as e:
+                        print(f"Error flushing socket: {type(e)} {str(e)}")
 
                     if attempt + 1 == MAXIMUM_RETRY:
                         failed_pieces.put(piece_index)
@@ -237,8 +263,9 @@ class DownloadManager:
         # print("sent interested to peer ", peer_id)
         bitfield = peerCommunicator.receive_bitfield()
         # print("received bitfield from peer ", peer_id)
-        with self.lock:
-            bitfields[peer_id] = bitfield
+        if bitfields is not None:
+            with self.lock:
+                bitfields[peer_id] = bitfield
 
     def _connect_peer(
         self,
@@ -290,6 +317,40 @@ class DownloadManager:
         return [
             piece for piece, _ in sorted(piece_count.items(), key=lambda item: item[1])
         ]
+
+    def _check_and_reconnect_peers(self, connected_peers, peer_list, infohash):
+        """Check the connectivity of peers and reconnect any disconnected peers."""
+        updated_connected_peers = []
+
+        for peer in connected_peers:
+            try:
+                peer_socket = peer["socket"]
+                peer_socket.setblocking(False)
+                peer_socket.send(b"")
+                peer_socket.setblocking(True)
+                updated_connected_peers.append(peer)
+            except (OSError, socket.error, BlockingIOError):
+                print(f"Reconnecting to peer {peer['peer']['peer_id']}...")
+                new_socket = self._connect_peer(infohash, peer["peer"])
+                if new_socket:
+                    self._retrieve_bitfield(peer["peer"]["peer_id"], new_socket, None)
+                    updated_connected_peers.append(
+                        {"socket": new_socket, "peer": peer["peer"]}
+                    )
+                else:
+                    print(f"Failed to reconnect to peer {peer['peer']['peer_id']}")
+
+        # Reconnect any remaining peers that are not yet connected
+        for peer in peer_list:
+            if not any(
+                p["peer"]["peer_id"] == peer["peer_id"] for p in updated_connected_peers
+            ):
+                print(f"Attempting to connect to a new peer {peer['peer_id']}...")
+                new_socket = self._connect_peer(infohash, peer)
+                if new_socket:
+                    updated_connected_peers.append({"socket": new_socket, "peer": peer})
+
+        return updated_connected_peers
 
     def get_downloaded(self):
         """Returns the total downloaded data."""

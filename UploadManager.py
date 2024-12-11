@@ -1,4 +1,5 @@
 import socket
+import time
 import threading
 from threading import Thread
 
@@ -70,7 +71,7 @@ class UploadManager:
 
         # Receive handshake from the peer
         handshake = peer_communicator.receive_handshake()
-        # print("received handshake")
+        print("received handshake")
         infohash = handshake[28:48].hex()
         peer_id = handshake[48:].decode("utf-8")
 
@@ -113,7 +114,7 @@ class UploadManager:
             piece_idx = peer_communicator.receive_request()
             # print(f"received request for piece {piece_idx}")
             if piece_idx is None:
-                # print("received choke")
+                print("Peer closed connection")
                 break
             piece_data = pieceManager.get_piece_data(piece_idx)
             peer_communicator.send_piece(piece_idx, piece_data)
