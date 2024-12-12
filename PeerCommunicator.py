@@ -193,7 +193,7 @@ class PeerCommunicator:
 
                 if is_last_chunk == 1:
                     break
-                time.sleep(0.0005)
+                time.sleep(0.0015)
             except Exception as e:
                 # print(f"Error receiving piece: {e}")
                 raise

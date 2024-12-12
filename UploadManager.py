@@ -71,7 +71,7 @@ class UploadManager:
 
         # Receive handshake from the peer
         handshake = peer_communicator.receive_handshake()
-        print("received handshake")
+        # print("received handshake")
         infohash = handshake[28:48].hex()
         peer_id = handshake[48:].decode("utf-8")
 

@@ -211,7 +211,7 @@ class DownloadManager:
                         )
 
                     if pieceManager.verify_piece(piece_data, piece_index):
-                        print(f"Verifcation succesful for piece ", piece_index)
+                        # print(f"Verifcation succesful for piece ", piece_index)
                         pieceManager.add_downloaded_piece(piece_data, piece_index)
                         with self.lock:
                             self.active_downloads[infohash]["downloaded_total"] += len(
